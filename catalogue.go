@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"text/tabwriter"
 )
 
 const (
@@ -97,7 +98,7 @@ func loadEnvironment(name, explicitPath string) (config, error) {
 	}
 	c, ok := catalogue[name]
 	if !ok {
-		return config{}, fmt.Errorf("unknown environment %q; run bivrost environments or use --config PATH", name)
+		return config{}, fmt.Errorf("unknown environment %q; run bivrost list or use --config PATH", name)
 	}
 	c.Environment = name
 	return c, nil
@@ -155,7 +156,8 @@ func listEnvironments(w io.Writer) error {
 	}
 	sort.Strings(ordered)
 
-	fmt.Fprintln(w, "ENVIRONMENT  PROFILE           PIM")
+	table := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(table, "ENVIRONMENT\tSOURCE\tKUBERNETES\tREGISTRY\tPIM")
 	for _, name := range ordered {
 		c := catalogue[name]
 		source := "catalogue"
@@ -178,8 +180,19 @@ func listEnvironments(w io.Writer) error {
 		if c.RequiresPIM {
 			pim = "required"
 		}
-		fmt.Fprintf(w, "%-12s %-17s %s\n", name, source, pim)
+		kube, registry := "-", "-"
+		if c.AKS != nil {
+			kube = "configured"
+		}
+		if c.Registry != "" {
+			registry = "configured"
+		}
+		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n", name, source, kube, registry, pim)
 	}
+	if err := table.Flush(); err != nil {
+		return err
+	}
+	fmt.Fprintln(w, "Capabilities describe configuration, not verified connectivity.")
 	fmt.Fprintln(w, "Availability is not authorization. Connections use your own identity and existing permissions.")
 	return nil
 }
