@@ -14,3 +14,4 @@ described work already exists.
 | [0006](0006-pim-jit-lifecycle.md) | Short-lived PIM activation lifecycle | Accepted future direction |
 | [0007](0007-release-distribution.md) | Reproducible release distribution | Proposed |
 | [0008](0008-tesseract-local-configuration.md) | Tesseract encrypted local configuration | Accepted future direction |
+| [0009](0009-cloud-provider-boundaries.md) | Incremental cloud provider boundaries | Accepted |

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/alcxyz/bivrost/internal/azure"
 )
 
 // bastionSession owns only local tunnel processes and temporary SSH credentials.
@@ -73,7 +75,7 @@ func openBastion(ctx context.Context, c config) (_ *bastionSession, resultErr er
 		fmt.Println("Preparing a short-lived Entra SSH certificate using your local Azure login...")
 		finishCredentials := diagnosticStep(ctx, eventSSHCredentials)
 		authCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		cmd, e := azureCommand(authCtx, "ssh", "config", "--ip", "127.0.0.1", "--port", strconv.Itoa(s.port), "--file", s.sshConfig, "--keys-destination-folder", s.directory, "--subscription", c.Subscription, "--only-show-errors")
+		cmd, e := azure.Command(authCtx, "ssh", "config", "--ip", "127.0.0.1", "--port", strconv.Itoa(s.port), "--file", s.sshConfig, "--keys-destination-folder", s.directory, "--subscription", c.Subscription, "--only-show-errors")
 		if e == nil {
 			e = cmd.Run()
 		}
@@ -89,7 +91,7 @@ func openBastion(ctx context.Context, c config) (_ *bastionSession, resultErr er
 	}
 	tunnelCtx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
-	cmd, err := azureCommand(tunnelCtx, "network", "bastion", "tunnel", "--name", c.BastionName, "--resource-group", c.BastionResourceGroup, "--subscription", c.Subscription, "--target-resource-id", c.VMResourceID, "--resource-port", "22", "--port", strconv.Itoa(s.port), "--only-show-errors")
+	cmd, err := azure.Command(tunnelCtx, "network", "bastion", "tunnel", "--name", c.BastionName, "--resource-group", c.BastionResourceGroup, "--subscription", c.Subscription, "--target-resource-id", c.VMResourceID, "--resource-port", "22", "--port", strconv.Itoa(s.port), "--only-show-errors")
 	if err != nil {
 		return nil, err
 	}

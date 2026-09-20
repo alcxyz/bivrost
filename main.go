@@ -22,6 +22,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/alcxyz/bivrost/internal/azure"
 )
 
 type aksConfig struct {
@@ -413,7 +415,7 @@ func loginPodmanSession(ctx context.Context, c config, session *podmanSession) (
 }
 
 func loginRegistryWithCommand(childCtx context.Context, c config, podman *exec.Cmd) error {
-	cmd, err := azureCommand(childCtx, "acr", "login", "--name", c.Registry, "--subscription", c.RegistrySubscription, "--expose-token", "--output", "json", "--only-show-errors")
+	cmd, err := azure.Command(childCtx, "acr", "login", "--name", c.Registry, "--subscription", c.RegistrySubscription, "--expose-token", "--output", "json", "--only-show-errors")
 	if err != nil {
 		return err
 	}

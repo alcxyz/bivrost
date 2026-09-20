@@ -12,6 +12,8 @@ its implementation is complete.
 - [#6: complete Windows native Podman Machine QA](https://github.com/alcxyz/bivrost/issues/6)
 - [#8: add Tesseract encrypted local configuration](https://github.com/alcxyz/bivrost/issues/8)
 
+- [#10: incremental multi-cloud capability boundaries](https://github.com/alcxyz/bivrost/issues/10)
+
 ## Metadata delivery order
 
 1. [Heimdal: session metadata](https://github.com/alcxyz/bivrost/milestone/1) delivers fresh per-connection

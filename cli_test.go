@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/alcxyz/bivrost/internal/azure"
 )
 
 func TestParseCommandHelp(t *testing.T) {
@@ -152,14 +154,14 @@ func TestParseLoginAndAzureArguments(t *testing.T) {
 	if command.kind != commandLogin || command.tenant != "tenant.example" {
 		t.Fatalf("parseCommand(login) = %+v", command)
 	}
-	if got, want := strings.Join(azureLoginArguments(command.tenant), " "), "login --output none --tenant tenant.example"; got != want {
-		t.Fatalf("azureLoginArguments() = %q, want %q", got, want)
+	if got, want := strings.Join(azure.LoginArguments(command.tenant), " "), "login --output none --tenant tenant.example"; got != want {
+		t.Fatalf("azure.LoginArguments() = %q, want %q", got, want)
 	}
-	if got := strings.Join(azureLoginArguments(""), " "); got != "login --output none" {
-		t.Fatalf("azureLoginArguments(empty) = %q", got)
+	if got := strings.Join(azure.LoginArguments(""), " "); got != "login --output none" {
+		t.Fatalf("azure.LoginArguments(empty) = %q", got)
 	}
 	for _, disallowed := range []string{"--use-device-code", "--env", "--config", "--no-login"} {
-		if strings.Contains(strings.Join(azureLoginArguments(command.tenant), " "), disallowed) {
+		if strings.Contains(strings.Join(azure.LoginArguments(command.tenant), " "), disallowed) {
 			t.Errorf("Azure login arguments contain %s", disallowed)
 		}
 	}

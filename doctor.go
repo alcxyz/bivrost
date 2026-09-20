@@ -7,6 +7,8 @@ import (
 	"io"
 	"os/exec"
 	"time"
+
+	"github.com/alcxyz/bivrost/internal/azure"
 )
 
 // Doctor only inspects existing setup. It does not log in, install extensions,
@@ -128,7 +130,7 @@ func platformDoctorWithSession(ctx context.Context, c config, out io.Writer, ses
 func doctorAzureCheck(ctx context.Context, args ...string) error {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	cmd, err := azureCommand(ctx, args...)
+	cmd, err := azure.Command(ctx, args...)
 	if err != nil {
 		return err
 	}
