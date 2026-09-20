@@ -1,0 +1,5 @@
+/dist/
+/bivrost
+/bivrost.exe
+*.test
+*.test.exe

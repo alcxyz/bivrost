@@ -1,0 +1,16 @@
+{
+  "registry": "exampleregistry",
+  "registry_subscription": "REPLACE-WITH-ACR-SUBSCRIPTION-ID",
+  "subscription": "REPLACE-WITH-BASTION-SUBSCRIPTION-ID",
+  "bastion_name": "REPLACE-WITH-BASTION-NAME",
+  "bastion_resource_group": "REPLACE-WITH-BASTION-RESOURCE-GROUP",
+  "vm_resource_id": "/subscriptions/REPLACE/resourceGroups/REPLACE/providers/Microsoft.Compute/virtualMachines/REPLACE",
+  "proxy_port": 18080,
+  "socks_port": 18081,
+  "aks": {
+    "name": "REPLACE-WITH-AKS-NAME",
+    "resource_group": "REPLACE-WITH-AKS-RESOURCE-GROUP",
+    "subscription": "REPLACE-WITH-AKS-SUBSCRIPTION-ID"
+  },
+  "private_hosts": []
+}
