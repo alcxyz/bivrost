@@ -186,7 +186,7 @@ func TestParseCommandRejectsUnknownInputBeforeDispatch(t *testing.T) {
 func TestCommandAndFlagShortcuts(t *testing.T) {
 	pairs := [][2][]string{
 		{{"v"}, {"version"}}, {{"-v"}, {"version"}}, {{"--version"}, {"version"}},
-		{{"env"}, {"environments"}}, {{"envs"}, {"environments"}},
+		{{"list"}, {"environments"}}, {{"env"}, {"environments"}}, {{"envs"}, {"environments"}},
 		{{"connect", "-e", "staging"}, {"connect", "--env", "staging"}},
 		{{"ssh", "-e=development"}, {"ssh", "--env=development"}},
 		{{"connect", "-c", "custom.json"}, {"connect", "--config", "custom.json"}},

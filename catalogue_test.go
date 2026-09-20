@@ -116,7 +116,7 @@ func TestEnvironmentSelectionUsesExternalCatalogueAndLocalOverride(t *testing.T)
 	if _, err := loadEnvironment("", filepath.Join(t.TempDir(), "missing.json")); err == nil {
 		t.Fatal("missing explicit config silently fell back")
 	}
-	if _, err := loadEnvironment("unknown", ""); err == nil || !strings.Contains(err.Error(), "bivrost environments") {
+	if _, err := loadEnvironment("unknown", ""); err == nil || !strings.Contains(err.Error(), "bivrost list") {
 		t.Fatal("unknown environment lacks guidance")
 	}
 }
@@ -127,7 +127,11 @@ func TestListEnvironmentsUsesSortedUnion(t *testing.T) {
 		"middle": catalogueTestConfig(true),
 		"zulu":   catalogueTestConfig(false),
 	})
-	writeLocalEnvironment(t, "alpha", catalogueTestConfig(false))
+	alphaProfile := catalogueTestConfig(true)
+	alphaProfile.Registry = ""
+	alphaProfile.RegistrySubscription = ""
+	alphaProfile.AKS = &aksConfig{Name: "example-cluster", ResourceGroup: "example-group", Subscription: "example-subscription"}
+	writeLocalEnvironment(t, "alpha", alphaProfile)
 	writeLocalEnvironment(t, "middle", catalogueTestConfig(false))
 	t.Setenv("PATH", t.TempDir())
 
@@ -142,13 +146,21 @@ func TestListEnvironmentsUsesSortedUnion(t *testing.T) {
 	if alpha < 0 || middle <= alpha || zulu <= middle {
 		t.Fatalf("environment list is missing entries or unsorted:\n%s", text)
 	}
-	for _, want := range []string{"alpha        local", "middle       local override", "zulu         catalogue"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("environment list missing %q:\n%s", want, text)
+	rows := map[string][]string{}
+	for _, line := range strings.Split(text, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 0 {
+			rows[fields[0]] = fields[1:]
 		}
 	}
-	if strings.Contains(text[strings.Index(text, "middle"):], "middle       local override    required") {
-		t.Fatal("local override inherited requires_pim from the catalogue")
+	for name, want := range map[string]string{
+		"alpha":  "local configured - required",
+		"middle": "local override - configured not required",
+		"zulu":   "catalogue - configured not required",
+	} {
+		if got := strings.Join(rows[name], " "); got != want {
+			t.Errorf("%s: got %q, want %q", name, got, want)
+		}
 	}
 	command, err := parseCommand([]string{"environments"})
 	if err != nil || command.kind != commandEnvironments {

@@ -4,8 +4,8 @@ import "strings"
 
 func canonicalHelpTopic(topic string) string {
 	switch topic {
-	case "env", "envs":
-		return "environments"
+	case "environments", "env", "envs":
+		return "list"
 	case "v", "-v", "--version":
 		return "version"
 	default:
@@ -28,11 +28,12 @@ Access
 Setup
   doctor        Check prerequisites for an environment
   login         Sign in locally with Azure CLI, when needed
-  environments  List environments (aliases: env, envs)
+  list          List connection targets (aliases: environments, env, envs)
   config init   Create optional user settings
   version       Show the build version (aliases: v, -v, --version)
 
 Start here
+  bivrost list
   bivrost doctor -e example
   bivrost connect -e example
   bivrost connect -e example --acr
@@ -112,11 +113,15 @@ the environments directory beside this settings file.
 Options
   -h, --help  Show this help
 `
-	case "environments":
-		return `List catalogue environments and local profiles.
+	case "list":
+		return `List configured connection targets from the catalogue and local profiles.
 
-Usage: bivrost environments
-Aliases: bivrost env, bivrost envs
+Usage: bivrost list
+Aliases: bivrost environments, bivrost env, bivrost envs
+
+Shows configuration source, configured Kubernetes/registry capabilities and PIM
+requirements. No login or tunnel is needed. Capabilities describe configuration,
+not verified connectivity or permissions.
 
 Listing an environment does not grant access. Azure and Kubernetes
 enforce your permissions. Profiles marked requires_pim require activation.

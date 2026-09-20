@@ -16,8 +16,10 @@ func TestContextualHelpRouting(t *testing.T) {
 		{[]string{"doctor", "--config", "/missing", "--help"}, "doctor"},
 		{[]string{"login", "--help"}, "login"},
 		{[]string{"config", "init", "-h"}, "config init"},
-		{[]string{"env", "--help"}, "environments"},
-		{[]string{"help", "envs"}, "environments"},
+		{[]string{"list", "--help"}, "list"},
+		{[]string{"environments", "--help"}, "list"},
+		{[]string{"env", "--help"}, "list"},
+		{[]string{"help", "envs"}, "list"},
 		{[]string{"acr", "help"}, "acr"},
 	} {
 		cmd, err := parseCommand(tc.args)

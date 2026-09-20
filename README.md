@@ -28,11 +28,15 @@ Install Azure CLI, OpenSSH, and the Kubernetes client tools used by your
 environment. Install Podman only when using registry access.
 
 ```text
+bivrost list
 bivrost login
-bivrost environments
 bivrost doctor -e <environment>
 bivrost connect -e <environment>
 ```
+
+`bivrost list` shows configured targets, their source, capabilities and PIM
+requirements without signing in or opening a connection. `environments`, `env`
+and `envs` remain aliases. Listing a target does not verify access.
 
 For a standalone profile, copy the shipped `config.example.json`, fill in
 your deployment's values, and select it explicitly:

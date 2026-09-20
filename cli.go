@@ -193,9 +193,9 @@ func parseCommand(args []string) (parsedCommand, error) {
 	}
 
 	switch args[0] {
-	case "environments", "env", "envs":
+	case "list", "environments", "env", "envs":
 		if len(args) != 1 {
-			return parsedCommand{}, errors.New("environments does not accept arguments")
+			return parsedCommand{}, fmt.Errorf("%s does not accept arguments", args[0])
 		}
 		return parsedCommand{kind: commandEnvironments}, nil
 	case "config":
