@@ -6,14 +6,15 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/alcxyz/bivrost/internal/azure"
 )
 
 const kubeconfigTestSecret = "fixture-secret-must-not-escape"
 
 func TestAKSCredentialsArgumentsAreExplicitAndUnprivileged(t *testing.T) {
 	t.Parallel()
-	aks := aksConfig{Name: "cluster-one", ResourceGroup: "rg-platform", Subscription: "subscription-one"}
-	got := aksCredentialsArguments(aks, "/private/session/kubeconfig")
+	got := azure.AKSCredentialsArguments("cluster-one", "rg-platform", "subscription-one", "/private/session/kubeconfig")
 	want := []string{
 		"aks", "get-credentials",
 		"--subscription", "subscription-one",
@@ -24,11 +25,11 @@ func TestAKSCredentialsArgumentsAreExplicitAndUnprivileged(t *testing.T) {
 		"--only-show-errors",
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("aksCredentialsArguments() did not produce the required explicit argument set")
+		t.Fatalf("azure.AKSCredentialsArguments() did not produce the required explicit argument set")
 	}
 	for _, argument := range got {
 		if argument == "--admin" {
-			t.Fatal("aksCredentialsArguments() requested administrator credentials")
+			t.Fatal("azure.AKSCredentialsArguments() requested administrator credentials")
 		}
 	}
 }

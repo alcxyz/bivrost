@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/alcxyz/bivrost/internal/azure"
 )
 
 const (
@@ -85,7 +87,7 @@ func prepareKubeconfig(ctx context.Context, c config, directory string, localPor
 	}()
 
 	credentialsCtx, cancelCredentials := context.WithTimeout(ctx, aksCredentialsTimeout)
-	cmd, err := azureCommand(credentialsCtx, aksCredentialsArguments(*c.AKS, path)...)
+	cmd, err := azure.Command(credentialsCtx, azure.AKSCredentialsArguments(c.AKS.Name, c.AKS.ResourceGroup, c.AKS.Subscription, path)...)
 	if err == nil {
 		cmd.Stdout = io.Discard
 		cmd.Stderr = io.Discard
@@ -142,18 +144,6 @@ func prepareKubeconfig(ctx context.Context, c config, directory string, localPor
 	target.path = path
 	complete = true
 	return target, nil
-}
-
-func aksCredentialsArguments(aks aksConfig, path string) []string {
-	return []string{
-		"aks", "get-credentials",
-		"--subscription", aks.Subscription,
-		"--resource-group", aks.ResourceGroup,
-		"--name", aks.Name,
-		"--file", path,
-		"--format", "exec",
-		"--only-show-errors",
-	}
 }
 
 func commandFailure(parent, child context.Context, failed, timedOut string) error {

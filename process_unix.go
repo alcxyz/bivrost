@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"os/exec"
 	"syscall"
@@ -22,9 +21,6 @@ func prepareProcess(cmd *exec.Cmd) {
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 }
 func killProcess(cmd *exec.Cmd) { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
-func azureCommand(ctx context.Context, args ...string) (*exec.Cmd, error) {
-	return exec.CommandContext(ctx, "az", args...), nil
-}
 
 func prepareInteractive(cmd *exec.Cmd) {
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }

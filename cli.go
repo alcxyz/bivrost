@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/alcxyz/bivrost/internal/azure"
 )
 
 type commandKind int
@@ -366,18 +368,10 @@ func userConfigRoot() (string, error) {
 	return os.UserConfigDir()
 }
 
-func azureLoginArguments(tenant string) []string {
-	args := []string{"login", "--output", "none"}
-	if tenant != "" {
-		args = append(args, "--tenant", tenant)
-	}
-	return args
-}
-
 func localAzureLogin(ctx context.Context, tenant string) (resultErr error) {
 	finish := diagnosticStep(ctx, eventAzureLogin)
 	defer func() { finish(resultErr) }()
-	cmd, err := azureCommand(ctx, azureLoginArguments(tenant)...)
+	cmd, err := azure.Command(ctx, azure.LoginArguments(tenant)...)
 	if err != nil {
 		return err
 	}
