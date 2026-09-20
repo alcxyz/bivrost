@@ -271,7 +271,11 @@ func TestSignalCleanupHelper(t *testing.T) {
 			serveSignalHelper(t, name, mustSignalHelperValue(t, toolArgs, "-D"))
 		case "shell":
 			writeSignalHelperPID(t, name)
-			select {}
+			// Keep a timer pending so the synthetic shell does not trigger Go
+			// deadlock detection before the parent sends its termination signal.
+			for {
+				time.Sleep(time.Hour)
+			}
 		default:
 			t.Fatalf("unknown synthetic tool %q", name)
 		}
