@@ -110,10 +110,12 @@ def publish():
     expected[manifest.name] = hashlib.sha256(manifest.read_bytes()).hexdigest()
     release = existing_release(tag)
     if release is None:
-        subprocess.run(["gh", "release", "create", tag, "--repo", REPOSITORY,
-                        "--draft", "--verify-tag", "--target", head, "--title", tag,
-                        "--generate-notes"], check=True)
-        release = existing_release(tag)
+        # Use the creation response: a subsequent list can briefly omit the draft.
+        release = json.loads(subprocess.check_output(
+            ["gh", "api", "--method", "POST", f"repos/{REPOSITORY}/releases", "--input", "-"],
+            input=json.dumps({"tag_name": tag, "target_commitish": head, "name": tag,
+                              "draft": True, "generate_release_notes": True}),
+            text=True))
     if not release["draft"]:
         raise ValueError("release is already published; refusing to mutate it")
 
