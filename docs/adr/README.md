@@ -16,3 +16,4 @@ described work already exists.
 | [0008](0008-tesseract-local-configuration.md) | Tesseract encrypted local configuration | Accepted future direction |
 | [0009](0009-cloud-provider-boundaries.md) | Incremental cloud provider boundaries | Accepted |
 | [0010](0010-managed-session-switch.md) | Managed session switching | Accepted |
+| [0011](0011-go-package-layout.md) | Go package boundaries and command entry point | Accepted |

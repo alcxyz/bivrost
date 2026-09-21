@@ -35,7 +35,9 @@ monolithic provider object.
 
 ## Dependency review and next boundaries
 
-The current root package still owns configuration and lifecycle code. Azure
+At the initial extraction, the root package still owned configuration and lifecycle code.
+ADR 0011 subsequently separates configuration, transport, shell integration and
+command parsing from session orchestration. Azure
 operations are spread across login parsing, Bastion session setup, kubeconfig
 preparation, registry login and doctor. `platformServices` already supplies a
 local seam for lifecycle tests; it is not a public cloud-provider contract.
