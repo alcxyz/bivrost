@@ -22,6 +22,7 @@ Usage: bivrost <command> [options]
 
 Access
   connect       Open a local shell for platform commands
+  switch        Reconnect the active shell to another environment
   ssh           Open a shell on the management VM
   acr           Access container images with Podman
 
@@ -145,6 +146,10 @@ Options
 		description = "Open a local shell with platform connectivity."
 		notes = "Azure sign-in is reused. Proxy variables and kubeconfig apply only\nto this shell; your personal Kubernetes context stays unchanged.\nExit the shell to disconnect. Add --acr for Podman registry access,\nor run bivrost acr enable inside a Bash, Zsh, or PowerShell session.\nPodman is required only when ACR is enabled."
 		example = "bivrost connect -e example"
+	case "switch":
+		description = "Close the active session and connect to another environment."
+		notes = "Run inside a Bivrost Bash, Zsh, or PowerShell session. Finish shell jobs\nbefore switching. The target configuration is validated before leaving.\nA fresh shell opens after cleanup; shell-local variables and directory changes\nare not carried over. Add --acr to enable registry access in the new session.\nIf the new connection fails, you return to your original terminal; the old\nsession is not restored. Provider permissions and PIM still apply."
+		example = "bivrost switch -e example --acr"
 	case "ssh":
 		description = "Open an interactive shell on the management VM."
 		notes = "Uses local Azure sign-in for SSH authentication. Commands inside\nthe VM use the VM's own environment and Azure authentication."
@@ -182,7 +187,7 @@ Options
 	if topic == "doctor" {
 		b.WriteString("      --no-pull      Skip the diagnostic image pull\n")
 	}
-	if topic == "connect" {
+	if topic == "connect" || topic == "switch" {
 		b.WriteString("      --acr          Enable Podman registry access at startup\n")
 	}
 	if topic == "acr connect" || topic == "connect" {

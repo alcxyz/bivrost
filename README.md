@@ -38,6 +38,13 @@ bivrost connect -e <environment>
 requirements without signing in or opening a connection. `environments`, `env`
 and `envs` remain aliases. Listing a target does not verify access.
 
+Inside a Bash, Zsh or PowerShell session, use `bivrost switch -e <environment>`
+to close the current session and open a fresh one. Add `--acr` for registry
+access in the new session. Finish shell jobs first; shell-local variables and
+directory changes are not carried over. If the new connection fails after
+cleanup, you return to your original terminal. Other shells can use `exit`
+followed by `bivrost connect`.
+
 For a standalone profile, copy the shipped `config.example.json`, fill in
 your deployment's values, and select it explicitly:
 

@@ -121,9 +121,34 @@ const unixActivationInit = unixPodmanPathInit + `if [[ -n "$BIVROST_EXECUTABLE" 
     unalias bivrost 2>/dev/null || true
     function bivrost {
         local bivrost_status=0
-        "$BIVROST_EXECUTABLE" "$@" || bivrost_status=$?
+        local bivrost_switch=0
+        if [[ "$#" -gt 0 && "$1" == switch ]]; then
+            bivrost_switch=1
+            if [[ -n "${BASH_VERSION-}" && ( -n "${BASHPID-}" && "$BASHPID" != "$$" || -z "${BASHPID-}" && "${BASH_SUBSHELL:-0}" != 0 ) ]]; then
+                printf '%s\n' 'bivrost: switch must run directly in the Bivrost shell' >&2
+                return 1
+            fi
+            if [[ -n "${ZSH_VERSION-}" && "${ZSH_SUBSHELL:-0}" != 0 ]]; then
+                printf '%s\n' 'bivrost: switch must run directly in the Bivrost shell' >&2
+                return 1
+            fi
+            if [[ -n "${BASH_VERSION-}" && -n "$(jobs -p)" ]]; then
+                printf '%s\n' 'bivrost: finish background or stopped shell jobs before switching' >&2
+                return 1
+            fi
+            if [[ -n "${ZSH_VERSION-}" && "${#jobstates}" -gt 0 ]]; then
+                printf '%s\n' 'bivrost: finish background or stopped shell jobs before switching' >&2
+                return 1
+            fi
+            BIVROST_SWITCH_ALLOWED=1 "$BIVROST_EXECUTABLE" "$@" || bivrost_status=$?
+        else
+            "$BIVROST_EXECUTABLE" "$@" || bivrost_status=$?
+        fi
         if [[ "$bivrost_status" == 0 && "$#" == 2 && "$1" == acr && "$2" == enable ]]; then
             source "$BIVROST_ACR_ENV_FILE" || return $?
+        fi
+        if [[ "$bivrost_switch" == 1 && "$bivrost_status" == 85 ]]; then
+            exit 85
         fi
         return "$bivrost_status"
     }
@@ -207,8 +232,36 @@ Set-BivrostPodmanPath
 if ($env:BIVROST_EXECUTABLE -and $env:BIVROST_ACR_ENV_FILE) {
     Remove-Item Alias:bivrost -Force -ErrorAction SilentlyContinue
     function global:bivrost {
-        & $env:BIVROST_EXECUTABLE @args
-        $bivrostStatus = $LASTEXITCODE
+        $bivrostSwitch = $args.Count -gt 0 -and $args[0] -ceq 'switch'
+        if ($bivrostSwitch -and ($MyInvocation.PipelineLength -gt 1 -or $MyInvocation.ScriptName)) {
+            [Console]::Error.WriteLine('bivrost: switch must run directly in the Bivrost shell')
+            $global:LASTEXITCODE = 1
+            return
+        }
+        if ($bivrostSwitch) {
+            $activeJobs = @(Get-Job -ErrorAction SilentlyContinue)
+            if ($activeJobs.Count -gt 0) {
+                [Console]::Error.WriteLine('bivrost: finish background or stopped shell jobs before switching')
+                $global:LASTEXITCODE = 1
+                return
+            }
+            $hadSwitchAllowed = Test-Path -LiteralPath Env:BIVROST_SWITCH_ALLOWED
+            $previousSwitchAllowed = $env:BIVROST_SWITCH_ALLOWED
+            try {
+                $env:BIVROST_SWITCH_ALLOWED = '1'
+                & $env:BIVROST_EXECUTABLE @args
+                $bivrostStatus = $LASTEXITCODE
+            } finally {
+                if ($hadSwitchAllowed) {
+                    $env:BIVROST_SWITCH_ALLOWED = $previousSwitchAllowed
+                } else {
+                    Remove-Item -LiteralPath Env:BIVROST_SWITCH_ALLOWED -ErrorAction SilentlyContinue
+                }
+            }
+        } else {
+            & $env:BIVROST_EXECUTABLE @args
+            $bivrostStatus = $LASTEXITCODE
+        }
         if ($bivrostStatus -eq 0 -and $args.Count -eq 2 -and $args[0] -ceq 'acr' -and $args[1] -ceq 'enable') {
             try {
                 if (-not (Test-Path -LiteralPath $env:BIVROST_ACR_ENV_FILE -PathType Leaf)) {
@@ -241,6 +294,9 @@ if ($env:BIVROST_EXECUTABLE -and $env:BIVROST_ACR_ENV_FILE) {
                 $global:LASTEXITCODE = 1
                 throw
             }
+        }
+        if ($bivrostSwitch -and $bivrostStatus -eq 85) {
+            exit 85
         }
         $global:LASTEXITCODE = $bivrostStatus
     }
