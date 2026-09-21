@@ -21,7 +21,19 @@ class AssetPublicationTests(unittest.TestCase):
             release.assets_to_upload({"one": "hash"}, assets, lambda _: "hash")
 
     def test_new_draft_uses_creation_response_without_relisting(self):
-        with patch("release.version", return_value="0.1.0"),              patch("release.command", return_value="tested"),              patch.dict("release.os.environ", {"GITHUB_SHA": "tested"}),              patch("release.verify_remote_tag"),              patch("release.subprocess.run"),              patch("release.existing_release", return_value=None) as lookup,              patch("release.subprocess.check_output", return_value='{"id":42,"draft":true}'),              patch("release.paginated_api", return_value=[]) as assets,              patch("release.assets_to_upload", return_value=[]),              patch("pathlib.Path.read_text", return_value="hash archive.tar.gz"),              patch("pathlib.Path.read_bytes", return_value=b"manifest"):
+        with (
+            patch("release.version", return_value="0.1.0"),
+            patch("release.command", return_value="tested"),
+            patch.dict("release.os.environ", {"GITHUB_SHA": "tested"}),
+            patch("release.verify_remote_tag"),
+            patch("release.subprocess.run"),
+            patch("release.existing_release", return_value=None) as lookup,
+            patch("release.subprocess.check_output", return_value='{"id":42,"draft":true}'),
+            patch("release.paginated_api", return_value=[]) as assets,
+            patch("release.assets_to_upload", return_value=[]),
+            patch("pathlib.Path.read_text", return_value="hash archive.tar.gz"),
+            patch("pathlib.Path.read_bytes", return_value=b"manifest"),
+        ):
             release.publish()
         lookup.assert_called_once_with("v0.1.0")
         self.assertEqual(assets.call_args_list[0].args, ("releases/42/assets?per_page=100",))
