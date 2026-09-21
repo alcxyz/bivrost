@@ -12,7 +12,7 @@ described work already exists.
 | [0004](0004-terraform-baseline.md) | Terraform baseline and local Azure discovery | Accepted future direction |
 | [0005](0005-session-runtime-metadata.md) | Heimdal session-only runtime metadata | Accepted future direction |
 | [0006](0006-pim-jit-lifecycle.md) | Short-lived PIM activation lifecycle | Accepted future direction |
-| [0007](0007-release-distribution.md) | Reproducible release distribution | Proposed |
+| [0007](0007-release-distribution.md) | Versioned release distribution | Accepted |
 | [0008](0008-tesseract-local-configuration.md) | Tesseract encrypted local configuration | Accepted future direction |
 | [0009](0009-cloud-provider-boundaries.md) | Incremental cloud provider boundaries | Accepted |
 | [0010](0010-managed-session-switch.md) | Managed session switching | Accepted |

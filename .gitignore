@@ -3,3 +3,5 @@
 /bivrost.exe
 *.test
 *.test.exe
+
+__pycache__/

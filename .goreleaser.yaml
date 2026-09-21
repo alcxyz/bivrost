@@ -1,0 +1,71 @@
+version: 2
+
+project_name: bivrost
+
+builds:
+  - id: bivrost
+    main: .
+    binary: bivrost
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+      - -buildvcs=false
+    ldflags:
+      - -s -w -buildid= -X main.version={{ .Version }}
+
+archives:
+  - id: bivrost
+    ids:
+      - bivrost
+    name_template: "bivrost_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    builds_info:
+      owner: root
+      group: root
+      mtime: "{{ .CommitDate }}"
+    files:
+      - src: README.md
+        info:
+          owner: root
+          group: root
+          mtime: "{{ .CommitDate }}"
+          mode: 0644
+      - src: LICENSE
+        info:
+          owner: root
+          group: root
+          mtime: "{{ .CommitDate }}"
+          mode: 0644
+      - src: config.example.json
+        info:
+          owner: root
+          group: root
+          mtime: "{{ .CommitDate }}"
+          mode: 0644
+
+checksum:
+  name_template: "bivrost_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+release:
+  github:
+    owner: alcxyz
+    name: bivrost
+  draft: true

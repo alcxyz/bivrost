@@ -22,6 +22,36 @@ Forgejo is a mirror. Bivrost is released under the MIT License.
 End the shell to close its tunnels, temporary files, and session-owned
 processes.
 
+## Install a release
+
+Download the archive for your operating system and CPU from
+[GitHub Releases](https://github.com/alcxyz/bivrost/releases), together with its
+`bivrost_<version>_checksums.txt`. Linux/macOS archives are `.tar.gz`; Windows
+archives are `.zip`. Extract the archive and put `bivrost` (or `bivrost.exe`)
+on your PATH, then run `bivrost version` and `bivrost --help`.
+
+Verify the archive's SHA-256 against its entry in the checksum file using
+`sha256sum <archive>` on Linux, `shasum -a 256 <archive>` on macOS, or
+`Get-FileHash <archive> -Algorithm SHA256` in PowerShell. Checksums detect changed
+contents; the first release does not provide artifact signatures.
+
+The archive contains neutral example configuration, not deployment endpoints or
+credentials. Your deployment supplies configuration separately. Azure CLI,
+OpenSSH, Kubernetes tools and optional Podman remain prerequisites; the binary
+does not install them. Windows builds are CI-tested; live Windows Podman Machine
+QA remains tracked in [issue #6](https://github.com/alcxyz/bivrost/issues/6).
+
+### Release maintenance
+
+Update `VERSION` through a reviewed PR. CI tests all three operating systems and
+checks GoReleaser snapshot archives. Main publishes a new version only after
+those checks pass. Existing tags and published assets are never replaced.
+Retry an interrupted release by rerunning its original workflow; a newer commit
+needs a new version. Local archive validation uses
+`goreleaser release --snapshot --clean` followed by
+`python3 scripts/check-release-archives.py`; use the toolchain in `.go-version`
+and GoReleaser version pinned in the workflow.
+
 ## Quick start
 
 Install Azure CLI, OpenSSH, and the Kubernetes client tools used by your
