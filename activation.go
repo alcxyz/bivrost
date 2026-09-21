@@ -35,6 +35,7 @@ type acrActivation struct {
 	kubeconfig               string
 	server                   *http.Server
 	done                     chan struct{}
+	pending                  *config
 }
 
 func activationShell(shell string) bool {
@@ -162,8 +163,45 @@ func (a *acrActivation) listen(env []string) ([]string, error) {
 		return nil, errors.New("cannot write session control capability")
 	}
 	a.server = &http.Server{ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 3 * time.Minute, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || (r.URL.Path != "/enable" && r.URL.Path != "/status") || r.Header.Get("Origin") != "" || subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+control.Token)) != 1 {
+		if r.Method != "POST" || (r.URL.Path != "/enable" && r.URL.Path != "/status" && r.URL.Path != "/switch") || r.Header.Get("Origin") != "" || subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+control.Token)) != 1 {
 			http.Error(w, "session request rejected", http.StatusForbidden)
+			return
+		}
+		if r.URL.Path == "/switch" {
+			request, err := decodeSwitchRequest(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			a.mu.Lock()
+			ended, pending := a.ctx.Err() != nil, a.pending != nil
+			a.mu.Unlock()
+			if ended {
+				http.Error(w, "session ended", http.StatusGone)
+				return
+			}
+			if pending {
+				http.Error(w, "a session switch is already pending", http.StatusConflict)
+				return
+			}
+			target, err := loadSwitchTarget(request)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			a.mu.Lock()
+			defer a.mu.Unlock()
+			if a.ctx.Err() != nil {
+				http.Error(w, "session ended", http.StatusGone)
+				return
+			}
+			if a.pending != nil {
+				http.Error(w, "a session switch is already pending", http.StatusConflict)
+				return
+			}
+			a.pending = &target
+			w.WriteHeader(http.StatusAccepted)
+			fmt.Fprintln(w, "session switch accepted")
 			return
 		}
 		if r.URL.Path == "/status" {
@@ -225,10 +263,23 @@ func (a *acrActivation) close() {
 	os.Remove(filepath.Join(a.directory, "acr-control.json"))
 }
 
+func (a *acrActivation) pendingSwitch() (config, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.pending == nil {
+		return config{}, false
+	}
+	return *a.pending, true
+}
+
 func sessionRequest(ctx context.Context, endpoint string) (*http.Response, error) {
+	return sessionRequestBody(ctx, endpoint, nil)
+}
+
+func sessionRequestBody(ctx context.Context, endpoint string, body io.Reader) (*http.Response, error) {
 	path := os.Getenv("BIVROST_CONTROL_FILE")
 	if os.Getenv("BIVROST_SESSION") == "" || path == "" {
-		return nil, errors.New("run bivrost acr enable inside a Bivrost bash, zsh, or PowerShell session; otherwise use bivrost connect --acr")
+		return nil, errors.New("this command requires an active Bivrost Bash, Zsh, or PowerShell session")
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -242,11 +293,14 @@ func sessionRequest(ctx context.Context, endpoint string) (*http.Response, error
 	if err != nil || host != "127.0.0.1" {
 		return nil, errors.New("invalid session control address")
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", "http://"+control.Address+endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "POST", "http://"+control.Address+endpoint, body)
 	if err != nil {
 		return nil, errors.New("cannot prepare session activation")
 	}
 	req.Header.Set("Authorization", "Bearer "+control.Token)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	client := &http.Client{Timeout: 3 * time.Minute, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirect rejected") }}
 	// A short-lived client must not retain idle connections.
 	req.Close = true

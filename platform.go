@@ -88,7 +88,26 @@ func platformConnect(ctx context.Context, c config) error {
 		}
 	}()
 
-	return platformConnectWith(ctx, c, &shellRunning, defaultPlatformServices())
+	return platformConnectLoop(ctx, c, &shellRunning, defaultPlatformServices())
+}
+
+func platformConnectLoop(ctx context.Context, c config, shellRunning *atomic.Bool, services platformServices) error {
+	prompt := c.Prompt
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		c.Prompt = prompt
+		err := platformConnectWith(ctx, c, shellRunning, services)
+		var reconnect *switchReconnectError
+		if !errors.As(err, &reconnect) {
+			return err
+		}
+		c = reconnect.config
+		if c.RequiresPIM {
+			fmt.Println("This environment requires PIM activation. Activate your eligible access before connecting; this tool does not grant or activate permissions.")
+		}
+	}
 }
 
 func platformConnectWith(ctx context.Context, c config, shellRunning *atomic.Bool, services platformServices) error {
@@ -225,7 +244,16 @@ func platformConnectWith(ctx context.Context, c config, shellRunning *atomic.Boo
 		finishShell(err)
 		return fmt.Errorf("could not start local shell %q: %w", shellName, err)
 	}
-	defer func() { shell.stop(); finishShell(shell.err()) }()
+	defer func() {
+		shell.stop()
+		shellErr := shell.err()
+		if isSwitchShellExit(shellErr) {
+			if _, ok := activation.pendingSwitch(); ok {
+				shellErr = nil
+			}
+		}
+		finishShell(shellErr)
+	}()
 
 	select {
 	case <-activation.done:
@@ -235,7 +263,13 @@ func platformConnectWith(ctx context.Context, c config, shellRunning *atomic.Boo
 		return errors.New("Podman session disconnected; start bivrost acr connect again")
 	case <-shell.done:
 		shellRunning.Store(false)
-		if err := shell.err(); err != nil {
+		err := shell.err()
+		if isSwitchShellExit(err) {
+			if target, ok := activation.pendingSwitch(); ok {
+				return &switchReconnectError{config: target}
+			}
+		}
+		if err != nil {
 			return fmt.Errorf("local shell exited: %w", err)
 		}
 		return nil

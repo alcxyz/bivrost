@@ -15,6 +15,8 @@ func TestContextualHelpRouting(t *testing.T) {
 		{[]string{"connect", "-e", "staging", "-h"}, "connect"},
 		{[]string{"doctor", "--config", "/missing", "--help"}, "doctor"},
 		{[]string{"login", "--help"}, "login"},
+		{[]string{"switch", "--help"}, "switch"},
+		{[]string{"help", "switch"}, "switch"},
 		{[]string{"config", "init", "-h"}, "config init"},
 		{[]string{"list", "--help"}, "list"},
 		{[]string{"environments", "--help"}, "list"},

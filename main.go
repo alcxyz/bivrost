@@ -64,6 +64,9 @@ func main() {
 	}
 	log.SetFlags(0)
 	if err := run(os.Args[1:]); err != nil {
+		if errors.Is(err, errSwitchAccepted) {
+			os.Exit(switchShellExitCode)
+		}
 		log.Print("bivrost: ", err)
 		os.Exit(1)
 	}

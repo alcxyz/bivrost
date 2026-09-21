@@ -252,3 +252,33 @@ func TestParseCommandRejectsRemovedEngineFlag(t *testing.T) {
 		}
 	}
 }
+
+func TestSwitchCommandOptions(t *testing.T) {
+	for _, args := range [][]string{{"switch", "-e", "example"}, {"switch", "-c", "profile.json", "--acr"}} {
+		cmd, err := parseCommand(args)
+		if err != nil || cmd.kind != commandSwitch {
+			t.Fatalf("%v: %+v, %v", args, cmd, err)
+		}
+		if args[2] == "profile.json" && !cmd.acr {
+			t.Fatal("switch lost explicit ACR option")
+		}
+	}
+	for _, args := range [][]string{{"switch"}, {"switch", "-e", "example", "--no-login"}, {"switch", "-e", "example", "-c", "profile.json"}, {"switch", "-e", "example", "extra"}} {
+		if _, err := parseCommand(args); err == nil {
+			t.Fatalf("accepted %v", args)
+		}
+	}
+}
+
+func TestSwitchRequiresManagedShell(t *testing.T) {
+	t.Setenv("BIVROST_SESSION", "")
+	t.Setenv("BIVROST_SWITCH_ALLOWED", "")
+	t.Setenv("BIVROST_CONTROL_FILE", "")
+	if err := run([]string{"switch", "-e", "example"}); err == nil || !strings.Contains(err.Error(), "active Bivrost") {
+		t.Fatalf("unmanaged switch error = %v", err)
+	}
+	t.Setenv("BIVROST_SESSION", "1")
+	if err := run([]string{"switch", "-e", "example"}); err == nil || !strings.Contains(err.Error(), "active Bivrost") {
+		t.Fatalf("direct binary switch without shell handshake error = %v", err)
+	}
+}

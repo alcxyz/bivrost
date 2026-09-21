@@ -22,6 +22,7 @@ const (
 	commandEnvironments
 	commandConfigInit
 	commandConnect
+	commandSwitch
 	commandVersion
 	commandSSH
 	commandACRProxy
@@ -94,7 +95,11 @@ func run(args []string) (resultErr error) {
 		fmt.Fprintf(os.Stderr, "Diagnostic log: %q\n", logger.path)
 		finish := diagnosticStep(ctx, eventCommand)
 		defer func() {
-			finish(resultErr)
+			if errors.Is(resultErr, errSwitchAccepted) {
+				finish(nil)
+			} else {
+				finish(resultErr)
+			}
 			if err := logger.close(); err != nil {
 				fmt.Fprintln(os.Stderr, "Diagnostic log could not be completed.")
 				if resultErr == nil {
@@ -104,6 +109,9 @@ func run(args []string) (resultErr error) {
 		}()
 	}
 
+	if command.kind == commandSwitch {
+		return runSwitch(ctx, command)
+	}
 	if command.kind == commandACREnable {
 		return enableSessionACR(ctx)
 	}
@@ -213,6 +221,8 @@ func parseCommand(args []string) (parsedCommand, error) {
 		return parsedCommand{kind: commandVersion}, nil
 	case "doctor":
 		return parseConnectionCommand(commandDoctor, "doctor", args[1:], false)
+	case "switch":
+		return parseConnectionCommand(commandSwitch, "switch", args[1:], false)
 	case "connect":
 		return parseConnectionCommand(commandConnect, "connect", args[1:], true)
 	case "ssh":
@@ -266,7 +276,7 @@ func parseConnectionCommand(kind commandKind, name string, args []string, allowN
 		flags.BoolVar(&noPull, "no-pull", false, "skip the diagnostic image pull")
 	}
 	var acr bool
-	if kind == commandConnect {
+	if kind == commandConnect || kind == commandSwitch {
 		flags.BoolVar(&acr, "acr", false, "enable Podman registry access")
 	}
 	var noLogin *bool
