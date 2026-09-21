@@ -24,7 +24,7 @@ The owner completes old-session cleanup before starting new tunnels, kubeconfig,
 registry settings and shell. No configuration is evaluated as shell code.
 
 Shell integration refuses switching when the shell reports active or stopped
-jobs. Detached processes are not migrated or promised to be tracked; users must
+jobs; PowerShell also requires removing retained job records. Detached processes are not migrated or promised to be tracked; users must
 finish their work before switching. Shell-local state and directory changes are
 not carried into the fresh shell. Ordinary exit remains a disconnect.
 

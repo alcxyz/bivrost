@@ -241,7 +241,7 @@ if ($env:BIVROST_EXECUTABLE -and $env:BIVROST_ACR_ENV_FILE) {
         if ($bivrostSwitch) {
             $activeJobs = @(Get-Job -ErrorAction SilentlyContinue)
             if ($activeJobs.Count -gt 0) {
-                [Console]::Error.WriteLine('bivrost: finish background or stopped shell jobs before switching')
+                [Console]::Error.WriteLine('bivrost: finish shell jobs and remove their records with Remove-Job before switching')
                 $global:LASTEXITCODE = 1
                 return
             }

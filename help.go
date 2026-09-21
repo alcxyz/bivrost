@@ -148,7 +148,7 @@ Options
 		example = "bivrost connect -e example"
 	case "switch":
 		description = "Close the active session and connect to another environment."
-		notes = "Run inside a Bivrost Bash, Zsh, or PowerShell session. Finish shell jobs\nbefore switching. The target configuration is validated before leaving.\nA fresh shell opens after cleanup; shell-local variables and directory changes\nare not carried over. Add --acr to enable registry access in the new session.\nIf the new connection fails, you return to your original terminal; the old\nsession is not restored. Provider permissions and PIM still apply."
+		notes = "Run inside a Bivrost Bash, Zsh, or PowerShell session. Finish shell jobs\nbefore switching; in PowerShell, remove finished job records with Remove-Job.\nThe target configuration is validated before leaving.\nA fresh shell opens after cleanup; shell-local variables and directory changes\nare not carried over. Add --acr to enable registry access in the new session.\nIf the new connection fails, you return to your original terminal; the old\nsession is not restored. Provider permissions and PIM still apply."
 		example = "bivrost switch -e example --acr"
 	case "ssh":
 		description = "Open an interactive shell on the management VM."
