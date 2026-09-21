@@ -154,6 +154,13 @@ boundaries and separates accepted future directions from proposed work.
 From the repository root, build and run the local command with:
 
 ```text
-go build ./...
-go run . --help
+go build ./cmd/bivrost
+go run ./cmd/bivrost --help
 ```
+
+### Source layout
+
+The executable lives in `cmd/bivrost`. Internal packages separate command parsing,
+configuration, diagnostics, proxy transport, shell hooks and Podman wrapping from
+session lifecycle coordination. See [ADR 0011](docs/adr/0011-go-package-layout.md)
+for package ownership and dependency rules.
