@@ -53,3 +53,23 @@ func TestHelpDescribesPodmanOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestHelpScopesPrivateHostsToNewSessions(t *testing.T) {
+	for _, topic := range []string{"connect", "acr connect", "switch"} {
+		text := HelpText(topic)
+		if !strings.Contains(text, "--private-host HOST") || !strings.Contains(text, "exact DNS host") {
+			t.Errorf("help for %q does not describe exact private host routing", topic)
+		}
+	}
+	for _, topic := range []string{"doctor", "ssh", "acr proxy", "acr login", "acr doctor"} {
+		if strings.Contains(HelpText(topic), "--private-host") {
+			t.Errorf("help for %q advertises unsupported private host routing", topic)
+		}
+	}
+	if text := HelpText("connect"); !strings.Contains(text, "not saved") {
+		t.Fatal("connect help does not state that private host additions are temporary")
+	}
+	if text := HelpText("switch"); !strings.Contains(text, "not carried over") {
+		t.Fatal("switch help does not state that private host additions are not inherited")
+	}
+}
