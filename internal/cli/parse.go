@@ -31,15 +31,16 @@ const (
 )
 
 type Command struct {
-	Kind        Kind
-	Environment string
-	ConfigPath  string
-	ACR         bool
-	NoPull      bool
-	NoLogin     bool
-	Tenant      string
-	Debug       bool
-	HelpTopic   string
+	Kind         Kind
+	Environment  string
+	ConfigPath   string
+	PrivateHosts []string
+	ACR          bool
+	NoPull       bool
+	NoLogin      bool
+	Tenant       string
+	Debug        bool
+	HelpTopic    string
 }
 
 func Parse(args []string) (Command, error) {
@@ -136,6 +137,13 @@ func parseConnectionCommand(kind Kind, name string, args []string, allowNoLogin 
 	flags.StringVar(environment, "e", "", "environment profile name")
 	configPath := flags.String("config", "", "path to a connection configuration")
 	flags.StringVar(configPath, "c", "", "path to a connection configuration")
+	var privateHosts []string
+	if kind == Connect || kind == ACRConnect || kind == Switch {
+		flags.Func("private-host", "exact private DNS host to route through this session (repeatable)", func(host string) error {
+			privateHosts = append(privateHosts, host)
+			return nil
+		})
+	}
 	var noPull bool
 	if kind == Doctor {
 		flags.BoolVar(&noPull, "no-pull", false, "skip the diagnostic image pull")
@@ -181,8 +189,11 @@ func parseConnectionCommand(kind Kind, name string, args []string, allowNoLogin 
 	if seenConfig && strings.TrimSpace(*configPath) == "" {
 		return Command{}, errors.New("--config requires a non-empty path")
 	}
+	if err := (profile.Profile{PrivateHosts: privateHosts}).ValidatePrivateHosts(); err != nil {
+		return Command{}, fmt.Errorf("invalid --private-host: %w", err)
+	}
 
-	command := Command{NoPull: noPull, ACR: acr, Kind: kind, Environment: *environment, ConfigPath: *configPath, Debug: *debug}
+	command := Command{NoPull: noPull, ACR: acr, Kind: kind, Environment: *environment, ConfigPath: *configPath, PrivateHosts: privateHosts, Debug: *debug}
 	if noLogin != nil {
 		command.NoLogin = *noLogin
 	}

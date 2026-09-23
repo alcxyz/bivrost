@@ -166,30 +166,35 @@ func TestDoctorWithoutTargetRequiresLiveSession(t *testing.T) {
 
 func TestDoctorSessionKeepsCustomProfileSnapshot(t *testing.T) {
 	var starts, logins atomic.Int32
-	c := platformTestConfig(t)
+	configured := platformTestConfig(t)
 	path := filepath.Join(t.TempDir(), "custom.json")
-	original, _ := json.Marshal(c)
-	if err := os.WriteFile(path, original, 0600); err != nil {
+	configuredJSON, _ := json.Marshal(configured)
+	if err := os.WriteFile(path, configuredJSON, 0600); err != nil {
 		t.Fatal(err)
 	}
-	_, control := doctorTestController(t, c, activationTestServices(t, &starts, &logins))
+	effective, err := withPrivateHosts(configured, []string{"session-only.example"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, control := doctorTestController(t, effective, activationTestServices(t, &starts, &logins))
 	// A later file edit must not change the target already connected by the shell.
-	c.Registry = "differentregistry"
-	changed, _ := json.Marshal(c)
+	configured.Registry = "differentregistry"
+	changed, _ := json.Marshal(configured)
 	if err := os.WriteFile(path, changed, 0600); err != nil {
 		t.Fatal(err)
 	}
 	status := doctorTestStatus(t, control)
 	got, _ := json.Marshal(status.Config)
+	want, _ := json.Marshal(effective)
 	var wantJSON, gotJSON any
-	json.Unmarshal(original, &wantJSON)
+	json.Unmarshal(want, &wantJSON)
 	json.Unmarshal(got, &gotJSON)
 	if !reflect.DeepEqual(wantJSON, gotJSON) {
 		t.Fatal("session configuration no longer matches connected snapshot")
 	}
 	t.Setenv("PATH", t.TempDir())
 	var out bytes.Buffer
-	err := runDoctor(context.Background(), cli.Command{Kind: cli.Doctor}, &out)
+	err = runDoctor(context.Background(), cli.Command{Kind: cli.Doctor}, &out)
 	if err == nil || !strings.Contains(out.String(), "[MISSING] az:") {
 		t.Fatalf("no-target doctor did not select live custom profile: %v, %s", err, out.String())
 	}

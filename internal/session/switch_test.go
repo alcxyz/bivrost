@@ -100,12 +100,41 @@ func TestRunSwitchReturnsAcceptedSentinel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = runSwitch(context.Background(), cli.Command{ConfigPath: targetPath})
+	err = runSwitch(context.Background(), cli.Command{ConfigPath: targetPath, PrivateHosts: []string{"switch-only.example"}})
 	if !errors.Is(err, ErrSwitchAccepted) {
 		t.Fatalf("runSwitch error = %v, want accepted sentinel", err)
 	}
-	if _, ok := a.pendingSwitch(); !ok {
+	pending, ok := a.pendingSwitch()
+	if !ok {
 		t.Fatal("accepted client response did not leave a pending target")
+	}
+	if len(pending.PrivateHosts) != 1 || pending.PrivateHosts[0] != "switch-only.example" {
+		t.Fatalf("accepted switch private hosts = %v", pending.PrivateHosts)
+	}
+}
+
+func TestSwitchPrivateHostsApplyOnlyWhenExplicit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "target.json")
+	target := platformTestConfig(t)
+	target.PrivateHosts = []string{"configured.example"}
+	if err := writeConfigFile(path, target); err != nil {
+		t.Fatal(err)
+	}
+
+	withAddition, err := loadSwitchTarget(switchRequest{ConfigPath: path, PrivateHosts: []string{"switch-only.example"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(withAddition.PrivateHosts) != 2 || withAddition.PrivateHosts[1] != "switch-only.example" {
+		t.Fatalf("explicit switch private hosts = %v", withAddition.PrivateHosts)
+	}
+
+	withoutAddition, err := loadSwitchTarget(switchRequest{ConfigPath: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(withoutAddition.PrivateHosts) != 1 || withoutAddition.PrivateHosts[0] != "configured.example" {
+		t.Fatalf("switch inherited an unrequested private host: %v", withoutAddition.PrivateHosts)
 	}
 }
 
