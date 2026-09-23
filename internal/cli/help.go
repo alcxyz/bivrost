@@ -146,11 +146,11 @@ Options
 	switch topic {
 	case "connect":
 		description = "Open a local shell with platform connectivity."
-		notes = "Azure sign-in is reused. Proxy variables and kubeconfig apply only\nto this shell; your personal Kubernetes context stays unchanged.\nRepeat --private-host for exact DNS hosts needed only by this session;\nthese additions are not saved. Exit the shell to disconnect. Add --acr\nfor Podman registry access, or run bivrost acr enable inside a Bash, Zsh,\nor PowerShell session. Podman is required only when ACR is enabled."
+		notes = "Azure sign-in is reused. Proxy variables and kubeconfig apply only\nto this shell; your personal Kubernetes context stays unchanged.\nExit the shell to disconnect. Add --acr for Podman registry access,\nor run bivrost acr enable inside a Bash, Zsh, or PowerShell session.\nPodman is required only when ACR is enabled."
 		example = "bivrost connect -e example"
 	case "switch":
 		description = "Close the active session and connect to another environment."
-		notes = "Run inside a Bivrost Bash, Zsh, or PowerShell session. Finish shell jobs\nbefore switching; in PowerShell, remove finished job records with Remove-Job.\nThe target configuration is validated before leaving. A fresh shell opens after\ncleanup; shell-local variables, directory changes, and prior --private-host\nadditions are not carried over. Repeat --private-host for exact DNS hosts needed\nby the new session. Add --acr to enable registry access in the new session.\nIf the new connection fails, you return to your original terminal; the old\nsession is not restored. Provider permissions and PIM still apply."
+		notes = "Run inside a Bivrost Bash, Zsh, or PowerShell session. Finish shell jobs\nbefore switching; in PowerShell, remove finished job records with Remove-Job.\nThe target configuration is validated before leaving.\nA fresh shell opens after cleanup; shell-local variables and directory changes\nare not carried over. Add --acr to enable registry access in the new session.\nIf the new connection fails, you return to your original terminal; the old\nsession is not restored. Provider permissions and PIM still apply."
 		example = "bivrost switch -e example --acr"
 	case "ssh":
 		description = "Open an interactive shell on the management VM."
@@ -166,7 +166,7 @@ Options
 		example = "bivrost acr proxy -e example"
 	case "acr connect":
 		description = "Compatibility alias for bivrost connect --acr."
-		notes = "Starts its own proxy and Bastion connection, then authenticates Podman.\nProxy and Podman settings apply only to this shell. Repeat --private-host for\nexact DNS hosts needed only by this session; these additions are not saved.\nExit to disconnect. Uses an existing local Podman engine or running Podman\nMachine. Stop a standalone acr proxy first if it occupies the same port."
+		notes = "Starts its own proxy and Bastion connection, then authenticates Podman.\nProxy and Podman settings apply only to this shell. Exit to disconnect.\nUses an existing local Podman engine or running Podman Machine.\nStop a standalone acr proxy first if it occupies the same port."
 		example = "bivrost acr connect -e example"
 	case "acr login":
 		description = "Refresh Podman's registry login."
@@ -191,9 +191,6 @@ Options
 	}
 	if topic == "connect" || topic == "switch" {
 		b.WriteString("      --acr          Enable Podman registry access at startup\n")
-	}
-	if topic == "connect" || topic == "acr connect" || topic == "switch" {
-		b.WriteString("      --private-host HOST\n                     Route one exact private DNS host (repeatable)\n")
 	}
 	if topic == "acr connect" || topic == "connect" {
 		b.WriteString("  -n, --no-login     Connect without refreshing registry login\n")

@@ -95,10 +95,6 @@ func Run(args []string, version string) (resultErr error) {
 	if err != nil {
 		return err
 	}
-	c, err = withPrivateHosts(c, command.PrivateHosts)
-	if err != nil {
-		return err
-	}
 	if command.Kind == cli.ACRProxy || command.Kind == cli.ACRConnect || command.Kind == cli.ACRLogin || command.Kind == cli.ACRDoctor {
 		_, err := profile.LoadUserSettings()
 		if err != nil {
@@ -145,29 +141,6 @@ func Run(args []string, version string) (resultErr error) {
 	default:
 		return errors.New("internal error: unsupported command")
 	}
-}
-
-func withPrivateHosts(c profile.Profile, additional []string) (profile.Profile, error) {
-	if len(additional) == 0 {
-		return c, nil
-	}
-	hosts := append([]string(nil), c.PrivateHosts...)
-	seen := make(map[string]struct{}, len(c.PrivateHosts)+len(additional))
-	for _, host := range c.PrivateHosts {
-		seen[host] = struct{}{}
-	}
-	for _, host := range additional {
-		if _, ok := seen[host]; ok {
-			continue
-		}
-		seen[host] = struct{}{}
-		hosts = append(hosts, host)
-	}
-	c.PrivateHosts = hosts
-	if err := c.ValidatePrivateHosts(); err != nil {
-		return profile.Profile{}, err
-	}
-	return c, nil
 }
 
 func localAzureLogin(ctx context.Context, tenant string) (resultErr error) {

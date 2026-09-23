@@ -43,7 +43,8 @@ QA remains tracked in [issue #6](https://github.com/alcxyz/bivrost/issues/6).
 
 ### Release maintenance
 
-Update `VERSION` through a reviewed PR. CI tests all three operating systems and
+Update `VERSION` on `dev`, then open a promotion PR from `dev` to `main`.
+CI tests all three operating systems and
 checks GoReleaser snapshot archives. Main publishes a new version only after
 those checks pass. Existing tags and published assets are never replaced.
 Retry an interrupted release by rerunning its original workflow; a newer commit
@@ -74,20 +75,6 @@ access in the new session. Finish shell jobs first; shell-local variables and
 directory changes are not carried over. If the new connection fails after
 cleanup, you return to your original terminal. Other shells can use `exit`
 followed by `bivrost connect`.
-
-Repeat `--private-host HOST` on `connect`, `acr connect`, or `switch` when the
-selected target needs additional exact private DNS hosts. These additions apply
-only to the new session, are combined with the selected profile's
-`private_hosts`, and are not written to the profile or catalogue. A switch does
-not carry additions from the old session unless they are supplied again.
-Inside that session, `bivrost doctor` without a target uses the effective
-session configuration, including these additions.
-
-This routing option does not configure Terraform authentication, backend,
-workspace, variables, or provider subscriptions, and Bivrost does not inspect
-or operate on Terraform state. Terraform retains the project's configuration
-and authentication selection; backends and providers configured for Azure CLI
-authentication can use the user's existing local Azure CLI login.
 
 For a standalone profile, copy the shipped `config.example.json`, fill in
 your deployment's values, and select it explicitly:
@@ -178,3 +165,16 @@ The executable lives in `cmd/bivrost`. Internal packages separate command parsin
 configuration, diagnostics, proxy transport, shell hooks and Podman wrapping from
 session lifecycle coordination. See [ADR 0011](docs/adr/0011-go-package-layout.md)
 for package ownership and dependency rules.
+
+### Branches and releases
+
+`dev` is the default development branch. Open feature PRs against `dev`;
+its CI tests and builds snapshots without publishing releases. Promote `dev`
+to protected `main` with a new `VERSION` when preparing a release. The
+promotion check rejects feature branches, unchanged versions and existing tags.
+Squash feature PRs and release promotions, then merge `main` back into `dev`
+after each release promotion.
+
+Consumers tracking `main` receive the release line; consumers tracking `dev`
+explicitly opt into unreleased work. Release tags identify immutable published
+builds. See [ADR 0007](docs/adr/0007-release-distribution.md).

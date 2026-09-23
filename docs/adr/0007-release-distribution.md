@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-20
-- Updated: 2026-09-21
+- Updated: 2026-09-23
 
 ## Context
 
@@ -13,11 +13,22 @@ DMS plugins share the version-and-tag flow without GoReleaser binary packaging.
 
 ## Decision
 
-Follow that existing pattern. `VERSION` selects the next release. A reviewed
-change to main passes Linux, macOS and Windows tests plus archive validation
+Use `dev` as the default development branch. Feature PRs target `dev`.
+A release promotion PR from this repository's `dev` to protected `main` must
+increase `VERSION` to an untagged version. It passes Linux, macOS and Windows
+tests plus archive validation
 before creating `v<VERSION>` at that exact tested commit. Existing version tags
 are never moved: later commits with the same version do not publish a new release.
-No release-please bot or permanent development branch is introduced.
+Only `main` publishes releases; `dev` produces test results and snapshots.
+Required promotion checks reject direct feature PRs to `main`, fork branches
+named `dev`, missing version bumps and reused tags. Use squash merges for feature PRs and release promotions, matching the
+maintained public applications. Merge `main` back into `dev` after promotion
+to reconcile the squash commit before further development.
+No release-please bot is introduced.
+
+This supersedes the initial direct-to-main development flow. Existing tags and
+releases remain immutable. The migration restores the last released application
+behavior on `main`; unfinished routing work is reapplied to `dev` afterward.
 
 Use pinned GitHub Actions and an exact GoReleaser version. `.go-version` records
 the build toolchain. Cross-compile with CGO disabled, trimmed paths and embedded
