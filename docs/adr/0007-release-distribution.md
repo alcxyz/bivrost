@@ -21,9 +21,9 @@ before creating `v<VERSION>` at that exact tested commit. Existing version tags
 are never moved: later commits with the same version do not publish a new release.
 Only `main` publishes releases; `dev` produces test results and snapshots.
 Required promotion checks reject direct feature PRs to `main`, fork branches
-named `dev`, missing version bumps and reused tags. Use squash merges for
-feature PRs, and merge commits for `dev` to `main` promotions so the shared
-history remains intact. Synchronize `main` back into `dev` after promotion.
+named `dev`, missing version bumps and reused tags. Use squash merges for feature PRs and release promotions, matching the
+maintained public applications. Merge `main` back into `dev` after promotion
+to reconcile the squash commit before further development.
 No release-please bot is introduced.
 
 This supersedes the initial direct-to-main development flow. Existing tags and
