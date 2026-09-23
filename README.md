@@ -75,20 +75,6 @@ directory changes are not carried over. If the new connection fails after
 cleanup, you return to your original terminal. Other shells can use `exit`
 followed by `bivrost connect`.
 
-Repeat `--private-host HOST` on `connect`, `acr connect`, or `switch` when the
-selected target needs additional exact private DNS hosts. These additions apply
-only to the new session, are combined with the selected profile's
-`private_hosts`, and are not written to the profile or catalogue. A switch does
-not carry additions from the old session unless they are supplied again.
-Inside that session, `bivrost doctor` without a target uses the effective
-session configuration, including these additions.
-
-This routing option does not configure Terraform authentication, backend,
-workspace, variables, or provider subscriptions, and Bivrost does not inspect
-or operate on Terraform state. Terraform retains the project's configuration
-and authentication selection; backends and providers configured for Azure CLI
-authentication can use the user's existing local Azure CLI login.
-
 For a standalone profile, copy the shipped `config.example.json`, fill in
 your deployment's values, and select it explicitly:
 

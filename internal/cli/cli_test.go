@@ -2,7 +2,6 @@ package cli
 
 import (
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -93,45 +92,6 @@ func TestNoLoginOnlyAcceptedByACRConnect(t *testing.T) {
 	}
 }
 
-func TestPrivateHostOptionsAreRepeatableAndSessionScoped(t *testing.T) {
-	t.Parallel()
-	for _, args := range [][]string{
-		{"connect", "--env", "dev", "--private-host", "one.example", "--private-host=two.example"},
-		{"acr", "connect", "--env", "dev", "--private-host", "one.example", "--private-host=two.example"},
-		{"switch", "--env", "dev", "--private-host", "one.example", "--private-host=two.example"},
-	} {
-		command, err := Parse(args)
-		if err != nil {
-			t.Fatalf("parseCommand(%q): %v", args, err)
-		}
-		if got := strings.Join(command.PrivateHosts, ","); got != "one.example,two.example" {
-			t.Fatalf("parseCommand(%q) private hosts = %q", args, got)
-		}
-	}
-
-	for _, args := range [][]string{
-		{"ssh", "--env", "dev", "--private-host", "one.example"},
-		{"doctor", "--env", "dev", "--private-host", "one.example"},
-		{"acr", "proxy", "--env", "dev", "--private-host", "one.example"},
-	} {
-		if _, err := Parse(args); err == nil {
-			t.Errorf("parseCommand(%q) accepted --private-host", args)
-		}
-	}
-}
-
-func TestPrivateHostOptionsRejectUnsafeTargets(t *testing.T) {
-	t.Parallel()
-	for _, host := range []string{
-		"*.example", "https://one.example", "127.0.0.1", "one.example:443",
-		"management.azure.com", "login.microsoftonline.com", "UPPER.example",
-	} {
-		if _, err := Parse([]string{"connect", "--env", "dev", "--private-host", host}); err == nil {
-			t.Errorf("parseCommand() accepted invalid private host %q", host)
-		}
-	}
-}
-
 func TestParseLoginAndAzureArguments(t *testing.T) {
 	t.Parallel()
 	command, err := Parse([]string{"login", "--tenant", "tenant.example"})
@@ -189,7 +149,7 @@ func TestCommandAndFlagShortcuts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(short, long) {
+		if short != long {
 			t.Fatalf("%q parsed differently from %q", pair[0], pair[1])
 		}
 	}
