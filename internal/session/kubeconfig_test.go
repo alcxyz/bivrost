@@ -2,15 +2,77 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alcxyz/bivrost/internal/azure"
+	profile "github.com/alcxyz/bivrost/internal/config"
 )
 
 const kubeconfigTestSecret = "fixture-secret-must-not-escape"
+
+func TestPrepareKubeconfigClassifiesMissingLocalKubernetesToolsAsUnavailable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the PATH fixture uses Unix executable names")
+	}
+	bin := t.TempDir()
+	writeTool := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeTool("az")
+	t.Setenv("PATH", bin)
+	c := profile.Profile{AKS: &profile.AKS{Name: "cluster-one", ResourceGroup: "cluster-rg", Subscription: "cluster-subscription"}}
+
+	_, err := prepareKubeconfig(context.Background(), c, t.TempDir(), 19443)
+	var unavailable *kubeUnavailableError
+	if !errors.As(err, &unavailable) || err.Error() != "kubelogin is missing from PATH" {
+		t.Fatalf("missing kubelogin error = %v, want bounded unavailable error", err)
+	}
+
+	writeTool("kubelogin")
+	_, err = prepareKubeconfig(context.Background(), c, t.TempDir(), 19443)
+	unavailable = nil
+	if !errors.As(err, &unavailable) || err.Error() != "kubectl is missing from PATH" {
+		t.Fatalf("missing kubectl error = %v, want bounded unavailable error", err)
+	}
+}
+
+func TestKubeCredentialsFailureIsBoundedAndPreservesCancellation(t *testing.T) {
+	t.Parallel()
+	parent, cancelParent := context.WithCancel(context.Background())
+	cancelParent()
+	if err := kubeCredentialsFailure(parent, context.Background()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("parent cancellation error = %v, want context.Canceled", err)
+	}
+
+	deadline, cancelDeadline := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancelDeadline()
+	err := kubeCredentialsFailure(context.Background(), deadline)
+	var unavailable *kubeUnavailableError
+	if !errors.As(err, &unavailable) || err.Error() != "AKS credential preparation timed out" {
+		t.Fatalf("credential timeout error = %v, want bounded unavailable error", err)
+	}
+
+	err = kubeCredentialsFailure(context.Background(), context.Background())
+	unavailable = nil
+	if !errors.As(err, &unavailable) || err.Error() != "AKS credentials could not be prepared" {
+		t.Fatalf("credential failure error = %v, want bounded unavailable error", err)
+	}
+	if strings.Contains(err.Error(), kubeconfigTestSecret) {
+		t.Fatal("credential failure exposed command output")
+	}
+}
 
 func TestAKSCredentialsArgumentsAreExplicitAndUnprivileged(t *testing.T) {
 	t.Parallel()

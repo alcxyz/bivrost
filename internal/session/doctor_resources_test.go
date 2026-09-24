@@ -74,3 +74,32 @@ esac
 		t.Fatal("probed ambient cluster without a matching session")
 	}
 }
+
+func TestDoctorUnavailableKubernetesNeverProbesAmbientContext(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX fake executable")
+	}
+	directory := t.TempDir()
+	log := filepath.Join(directory, "calls")
+	if err := os.WriteFile(filepath.Join(directory, "kubectl"), []byte("#!/bin/sh\nprintf called > \"$TEST_CALLS\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory)
+	t.Setenv("TEST_CALLS", log)
+	t.Setenv("KUBECONFIG", "/unrelated/personal/config")
+	c := platformTestConfig(t)
+	c.AKS = &profile.AKS{Name: "test", ResourceGroup: "rg", Subscription: "sub"}
+	results := map[string]string{}
+	status := &doctorSessionStatus{Kubeconfig: filepath.Join(directory, "empty"), KubernetesUnavailable: true}
+	doctorResourceChecks(context.Background(), c, status, true, func(state, label, detail string) {
+		results[label] = state + " " + detail
+	})
+	if !strings.HasPrefix(results["Bastion/VM transport"], "OK ") ||
+		!strings.Contains(results["Kubernetes API"], "NOT VERIFIED Kubernetes setup was unavailable") ||
+		!strings.Contains(results["Kubernetes list nodes"], "isolated empty kubeconfig") {
+		t.Fatal(results)
+	}
+	if _, err := os.Stat(log); !os.IsNotExist(err) {
+		t.Fatal("doctor probed Kubernetes despite unavailable session setup")
+	}
+}

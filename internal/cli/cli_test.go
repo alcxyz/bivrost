@@ -205,6 +205,30 @@ func TestCommandAndFlagShortcuts(t *testing.T) {
 	}
 }
 
+func TestParseSubscriptionDiscoveryDoesNotChangeListAliases(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{{"list"}, {"environments"}, {"env"}, {"envs"}} {
+		command, err := Parse(args)
+		if err != nil || command.Kind != Environments {
+			t.Errorf("Parse(%q) = %+v, %v; want environments", args, command, err)
+		}
+	}
+	for _, args := range [][]string{{"list", "subscriptions"}, {"list", "subscriptions", "--refresh"}} {
+		command, err := Parse(args)
+		if err != nil || command.Kind != Subscriptions || command.Refresh != (len(args) == 3) {
+			t.Errorf("Parse(%q) = %+v, %v", args, command, err)
+		}
+	}
+	for _, args := range [][]string{
+		{"environments", "subscriptions"}, {"env", "subscriptions"}, {"envs", "subscriptions"},
+		{"list", "subscriptions", "extra"}, {"list", "subscriptions", "--unknown"},
+	} {
+		if _, err := Parse(args); err == nil {
+			t.Errorf("Parse(%q) accepted invalid subscription discovery syntax", args)
+		}
+	}
+}
+
 func TestDebugFlagIsOptInAcrossOperationalCommands(t *testing.T) {
 	for _, args := range [][]string{
 		{"connect", "-e", "staging"}, {"ssh", "-e", "development"}, {"login"},

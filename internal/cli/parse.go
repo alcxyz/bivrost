@@ -16,6 +16,7 @@ type Kind int
 const (
 	Help Kind = iota
 	Environments
+	Subscriptions
 	ConfigInit
 	Connect
 	Switch
@@ -40,6 +41,7 @@ type Command struct {
 	NoLogin      bool
 	Tenant       string
 	Debug        bool
+	Refresh      bool
 	HelpTopic    string
 }
 
@@ -67,7 +69,15 @@ func Parse(args []string) (Command, error) {
 	}
 
 	switch args[0] {
-	case "list", "environments", "env", "envs":
+	case "list":
+		if len(args) >= 2 && args[1] == "subscriptions" {
+			return parseSubscriptionsCommand(args[2:])
+		}
+		if len(args) != 1 {
+			return Command{}, errors.New("list does not accept arguments; use bivrost list subscriptions to discover Azure subscriptions")
+		}
+		return Command{Kind: Environments}, nil
+	case "environments", "env", "envs":
 		if len(args) != 1 {
 			return Command{}, fmt.Errorf("%s does not accept arguments", args[0])
 		}
@@ -126,6 +136,22 @@ func Parse(args []string) (Command, error) {
 	default:
 		return Command{}, fmt.Errorf("unknown command %q; use bivrost help", args[0])
 	}
+}
+
+func parseSubscriptionsCommand(args []string) (Command, error) {
+	flags := flag.NewFlagSet("list subscriptions", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	refresh := flags.Bool("refresh", false, "retrieve an up-to-date subscription list from Azure")
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return Command{Kind: Help, HelpTopic: "list subscriptions"}, nil
+		}
+		return Command{}, fmt.Errorf("invalid list subscriptions options: %w", err)
+	}
+	if flags.NArg() != 0 {
+		return Command{}, errors.New("list subscriptions does not accept positional arguments")
+	}
+	return Command{Kind: Subscriptions, Refresh: *refresh}, nil
 }
 
 func parseConnectionCommand(kind Kind, name string, args []string, allowNoLogin bool) (Command, error) {

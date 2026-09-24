@@ -18,9 +18,14 @@ func TestDoctorReportsAllMissingTools(t *testing.T) {
 	if err := platformDoctor(context.Background(), c, &out); err == nil {
 		t.Fatal("missing prerequisites must produce a failure")
 	}
-	for _, name := range []string{"az", "ssh", "kubectl", "kubelogin", "podman"} {
+	for _, name := range []string{"az", "ssh", "podman"} {
 		if !strings.Contains(out.String(), "[MISSING] "+name+":") {
 			t.Errorf("missing independent result for %s", name)
+		}
+	}
+	for _, name := range []string{"kubectl", "kubelogin"} {
+		if !strings.Contains(out.String(), "[NOT VERIFIED] "+name+": missing;") {
+			t.Errorf("missing optional Kubernetes result for %s", name)
 		}
 	}
 	if strings.Contains(out.String(), "Docker") || strings.Contains(out.String(), "docker") {

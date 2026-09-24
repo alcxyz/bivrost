@@ -154,13 +154,22 @@ func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *a
 
 	var target *kubeTarget
 	var kubeconfigPath string
+	var kubeUnavailable *kubeUnavailableError
 	if c.AKS != nil {
 		prepared, err := services.prepareKubeconfig(ctx, c, bastion.directory, apiPort)
-		if err != nil {
+		if err == nil {
+			target = &prepared
+			kubeconfigPath = prepared.path
+		} else if ctx.Err() != nil {
+			return ctx.Err()
+		} else if !errors.As(err, &kubeUnavailable) {
 			return err
+		} else {
+			kubeconfigPath, err = writeEmptyKubeconfig(bastion.directory)
+			if err != nil {
+				return err
+			}
 		}
-		target = &prepared
-		kubeconfigPath = prepared.path
 	} else {
 		kubeconfigPath, err = writeEmptyKubeconfig(bastion.directory)
 		if err != nil {
@@ -207,6 +216,7 @@ func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *a
 	shellEnv := platformEnvironment(services.environ(), c.ProxyURL(), kubeconfigPath)
 	activation := newACRActivation(ctx, c, services, bastion.directory, shellName)
 	activation.kubeconfig = kubeconfigPath
+	activation.kubernetesUnavailable = kubeUnavailable != nil
 	defer activation.close()
 	if c.ACRSession {
 		if err := activation.enable(); err != nil {
@@ -225,7 +235,9 @@ func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *a
 	fmt.Println(shellinit.Label(c))
 
 	fmt.Println("Platform connection ready. Commands in the local shell use the session HTTPS proxy.")
-	if target == nil {
+	if kubeUnavailable != nil {
+		fmt.Println("Kubernetes is unavailable for this session: " + kubeUnavailable.Error() + ". KUBECONFIG points to an isolated empty configuration.")
+	} else if target == nil {
 		fmt.Println("No AKS cluster is configured; KUBECONFIG points to an empty session configuration.")
 	} else {
 		fmt.Println("Kubernetes API forwarding is ready at " + profile.Loopback(apiPort) + ".")
@@ -381,9 +393,27 @@ func platformEnvironment(env []string, proxy, kubeconfigPath string) []string {
 
 func writeEmptyKubeconfig(directory string) (string, error) {
 	path := filepath.Join(directory, "kubeconfig-empty")
-	if err := os.WriteFile(path, []byte(emptyKubeconfig), 0o600); err != nil {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
 		return "", errors.New("could not create the isolated empty kubeconfig")
 	}
+	complete := false
+	defer func() {
+		_ = f.Close()
+		if !complete {
+			_ = os.Remove(path)
+		}
+	}()
+	if err := f.Chmod(0o600); err != nil {
+		return "", errors.New("could not secure the isolated empty kubeconfig")
+	}
+	if _, err := f.Write([]byte(emptyKubeconfig)); err != nil {
+		return "", errors.New("could not write the isolated empty kubeconfig")
+	}
+	if err := f.Close(); err != nil {
+		return "", errors.New("could not finish the isolated empty kubeconfig")
+	}
+	complete = true
 	return path, nil
 }
 

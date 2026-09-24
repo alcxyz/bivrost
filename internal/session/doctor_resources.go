@@ -17,6 +17,11 @@ func doctorResourceChecks(ctx context.Context, c profile.Profile, session *docto
 	if c.AKS == nil {
 		return
 	}
+	if session != nil && session.KubernetesUnavailable {
+		report("NOT VERIFIED", "Kubernetes API", "Kubernetes setup was unavailable when this session started; other platform commands remain usable. Resolve Kubernetes access or missing tools and reconnect")
+		report("NOT VERIFIED", "Kubernetes list nodes", "not probed: this session uses an isolated empty kubeconfig and never falls back to your normal context")
+		return
+	}
 	if session == nil || session.Kubeconfig == "" || !kubectlAvailable {
 		report("NOT VERIFIED", "Kubernetes API", "requires kubectl and an active matching Bivrost session")
 		report("NOT VERIFIED", "Kubernetes list nodes", "requires a live read-only request in the matching session")

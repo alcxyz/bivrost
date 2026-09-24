@@ -37,6 +37,7 @@ type acrActivation struct {
 	services                 platformServices
 	directory, shell, script string
 	kubeconfig               string
+	kubernetesUnavailable    bool
 	server                   *http.Server
 	done                     chan struct{}
 	pending                  *profile.Profile
@@ -211,7 +212,7 @@ func (a *acrActivation) listen(env []string) ([]string, error) {
 		if r.URL.Path == "/status" {
 			a.mu.Lock()
 			defer a.mu.Unlock()
-			state := doctorSessionStatus{Config: a.config, Kubeconfig: a.kubeconfig}
+			state := doctorSessionStatus{Config: a.config, Kubeconfig: a.kubeconfig, KubernetesUnavailable: a.kubernetesUnavailable}
 			if a.ctx.Err() != nil {
 				http.Error(w, "session ended", http.StatusGone)
 				return
