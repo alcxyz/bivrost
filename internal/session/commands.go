@@ -51,6 +51,13 @@ func Run(args []string, version string) (resultErr error) {
 		ctx, stop = signal.NotifyContext(ctx, signals...)
 	}
 	defer stop()
+	if command.Kind == cli.Subscriptions {
+		subscriptions, err := azure.DiscoverSubscriptions(ctx, command.Refresh)
+		if err != nil {
+			return err
+		}
+		return cli.WriteSubscriptions(os.Stdout, subscriptions)
+	}
 
 	if command.Debug {
 		debugCtx, logger, err := diagnostics.Start(ctx)

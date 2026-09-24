@@ -20,12 +20,13 @@ import (
 // Status comes from the authenticated connection owner, not a mutable catalogue
 // or a shell badge. It contains connection metadata and no authentication tokens.
 type doctorSessionStatus struct {
-	Kubeconfig     string
-	Config         profile.Profile
-	Enabled        bool
-	LoginRefreshed bool
-	Machine        bool
-	Environment    map[string]string
+	KubernetesUnavailable bool
+	Kubeconfig            string
+	Config                profile.Profile
+	Enabled               bool
+	LoginRefreshed        bool
+	Machine               bool
+	Environment           map[string]string
 }
 
 func currentDoctorSession(ctx context.Context) (*doctorSessionStatus, error) {

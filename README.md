@@ -14,7 +14,10 @@ Forgejo is a mirror. Bivrost is released under the MIT License.
 - Opens a local shell whose private network traffic uses Azure Bastion and SSH.
 - Creates a temporary kubeconfig for `kubectl` when the selected environment
   has Kubernetes details. It is scoped to the child shell and leaves your
-  normal kubeconfig context alone.
+  normal kubeconfig context alone. Missing Kubernetes tools or unavailable AKS
+  credentials leave other platform commands usable with an isolated empty
+  kubeconfig; the session reports the limitation instead of selecting your
+  normal cluster.
 - Uses Podman on the local computer, either its native Linux engine or a local
   Podman Machine. Podman configuration, proxying, and the optional registry
   engine are session-scoped. Docker is not supported.
@@ -37,7 +40,7 @@ contents; the first release does not provide artifact signatures.
 
 The archive contains neutral example configuration, not deployment endpoints or
 credentials. Your deployment supplies configuration separately. Azure CLI,
-OpenSSH, Kubernetes tools and optional Podman remain prerequisites; the binary
+OpenSSH, tools for Kubernetes access and optional Podman remain prerequisites; the binary
 does not install them. Windows builds are CI-tested; live Windows Podman Machine
 QA remains tracked in [issue #6](https://github.com/alcxyz/bivrost/issues/6).
 
@@ -55,8 +58,8 @@ and GoReleaser version pinned in the workflow.
 
 ## Quick start
 
-Install Azure CLI, OpenSSH, and the Kubernetes client tools used by your
-environment. Install Podman only when using registry access.
+Install Azure CLI and OpenSSH. Kubernetes access also needs `kubectl` and
+`kubelogin`; install Podman when using registry access.
 
 ```text
 bivrost list
@@ -89,6 +92,49 @@ workspace, variables, or provider subscriptions, and Bivrost does not inspect
 or operate on Terraform state. Terraform retains the project's configuration
 and authentication selection; backends and providers configured for Azure CLI
 authentication can use the user's existing local Azure CLI login.
+
+### Terraform baseline (development branch)
+
+Inspect the subscriptions visible through your existing local Azure login:
+
+```text
+bivrost list subscriptions
+bivrost list subscriptions --refresh
+```
+
+The first command uses Azure CLI's local subscription list; `--refresh` asks
+Azure CLI to refresh it from Azure. The list includes enabled subscriptions in
+the current Azure cloud. Neither command signs in, selects a
+subscription, or proves permission to read a storage container. The default
+marker shows Azure CLI's current selection, not an override for your project.
+
+Then connect with the exact private backend hostname, if it is not already in
+the profile's `private_hosts`:
+
+```text
+bivrost connect -e example --private-host examplebackend.blob.core.windows.net
+```
+
+Run your usual Terraform commands inside the shell. Configure backend and
+provider subscriptions in your project as usual; the Bastion subscription can
+be different. Bivrost does not change the Azure CLI selection or set Terraform
+authentication variables. Subscription discovery and private routes work without
+Heimdal.
+
+Kubernetes setup is attempted automatically. If its client tools are missing
+or AKS credentials cannot be acquired, the shell still opens for Terraform and
+other platform commands, and `bivrost doctor` explains the Kubernetes limitation.
+Restore the missing tools or access and reconnect to retry Kubernetes setup.
+Cancellation, unsafe generated configuration, and failures in shared transport
+or local file protection still stop connection setup.
+
+Backend-specific diagnostics and generic command execution remain planned in
+[issue #5](https://github.com/alcxyz/bivrost/issues/5). Bivrost does not run
+`terraform init`, read state, or acquire a backend lock during connection or
+subscription discovery. Terraform commands you run yourself retain their normal
+state and locking behavior.
+
+### Profiles and registry access
 
 For a standalone profile, copy the shipped `config.example.json`, fill in
 your deployment's values, and select it explicitly:

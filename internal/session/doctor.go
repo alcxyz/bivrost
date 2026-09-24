@@ -44,7 +44,11 @@ func platformDoctorWithSession(ctx context.Context, c profile.Profile, out io.Wr
 		_, err := exec.LookPath(name)
 		available[name] = err == nil
 		if err != nil {
-			report("MISSING", name, "install this tool and make it available on PATH")
+			if name == "kubectl" || name == "kubelogin" {
+				report("NOT VERIFIED", name, "missing; install this tool for Kubernetes access. Other platform commands can still use the session")
+			} else {
+				report("MISSING", name, "install this tool and make it available on PATH")
+			}
 		} else {
 			report("OK", name, "available on PATH")
 		}

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -135,6 +136,25 @@ func TestWriteEmptyKubeconfigPreventsAmbientContextFallback(t *testing.T) {
 	}
 }
 
+func TestWriteEmptyKubeconfigRejectsExistingPath(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	path := filepath.Join(directory, "kubeconfig-empty")
+	if err := os.WriteFile(path, []byte("existing"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeEmptyKubeconfig(directory); err == nil {
+		t.Fatal("writeEmptyKubeconfig() replaced an existing session path")
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != "existing" {
+		t.Fatalf("existing path contents = %q, want unchanged", contents)
+	}
+}
+
 func TestNativeShellRejectsRelativeConfiguredShell(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("SHELL selects the native shell only on Unix")
@@ -263,6 +283,235 @@ func TestPlatformSessionStopsShellAndOwnedResourcesWhenSSHEnds(t *testing.T) {
 	}
 	if got := shellinit.EnvironmentValue(capturedEnv, "BIVROST_SESSION"); got != "1" {
 		t.Errorf("shell BIVROST_SESSION = %q, want 1", got)
+	}
+}
+
+func TestPlatformSessionDegradesOnlyKubernetesWhenAKSPreparationIsUnavailable(t *testing.T) {
+	t.Setenv("BIVROST_UPSTREAM_PROXY", "")
+	t.Setenv("BIVROST_ACR_UPSTREAM_PROXY", "")
+	directory := filepath.Join(t.TempDir(), "session-test")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	c := platformTestConfig(t)
+	c.AKS = &profile.AKS{Name: "cluster-one", ResourceGroup: "cluster-rg", Subscription: "cluster-subscription"}
+	c.PrivateHosts = []string{"database.private.example", "vault.private.example"}
+	proxyDone := make(chan error)
+	bastionDone := make(chan struct{})
+	sshDone := make(chan struct{})
+	var proxyClosed, bastionClosed, sshStopped atomic.Bool
+	var closeSSH sync.Once
+	var capturedSSH, capturedEnv, waitedAddresses []string
+	var status doctorSessionStatus
+	var emptyContents []byte
+
+	services := platformServices{
+		environ:     func() []string { return []string{"PATH=/custom/bin", "KUBECONFIG=/clusters/ambient"} },
+		selectShell: func() (string, []string, error) { return "/bin/bash", []string{"-i"}, nil },
+		reservePort: func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
+		startProxy: func(_ context.Context, got profile.Profile) (*platformProxy, error) {
+			if !reflect.DeepEqual(got.PrivateHosts, c.PrivateHosts) {
+				t.Fatalf("proxy private hosts = %q, want %q", got.PrivateHosts, c.PrivateHosts)
+			}
+			return &platformProxy{done: proxyDone, close: func() { proxyClosed.Store(true) }}, nil
+		},
+		openBastion: func(context.Context, profile.Profile) (*platformBastion, error) {
+			return &platformBastion{
+				port: 32022, stateRoot: filepath.Dir(directory), directory: directory,
+				sshConfig: filepath.Join(directory, "ssh_config"), done: bastionDone,
+				close: func() { bastionClosed.Store(true); _ = os.RemoveAll(directory) },
+			}, nil
+		},
+		prepareKubeconfig: func(_ context.Context, got profile.Profile, gotDirectory string, localPort int) (kubeTarget, error) {
+			if !reflect.DeepEqual(got.AKS, c.AKS) || gotDirectory != directory || localPort == 0 {
+				t.Fatalf("prepareKubeconfig() received changed AKS configuration or invalid session target")
+			}
+			return kubeTarget{}, &kubeUnavailableError{reason: kubeUnavailableAKSCredentials}
+		},
+		startSSH: func(_ context.Context, args []string) (*platformProcess, error) {
+			capturedSSH = append([]string(nil), args...)
+			return &platformProcess{
+				done: sshDone,
+				err:  func() error { return nil },
+				stop: func() { sshStopped.Store(true); closeSSH.Do(func() { close(sshDone) }) },
+			}, nil
+		},
+		startShell: func(_ context.Context, _ string, _ []string, env []string) (*platformProcess, error) {
+			capturedEnv = append([]string(nil), env...)
+			kubeconfig := shellinit.EnvironmentValue(env, "KUBECONFIG")
+			var err error
+			emptyContents, err = os.ReadFile(kubeconfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			control := readActivationControl(t, shellinit.EnvironmentValue(env, "BIVROST_CONTROL_FILE"))
+			status = doctorTestStatus(t, control)
+			done := make(chan struct{})
+			close(done)
+			return &platformProcess{done: done, err: func() error { return nil }, stop: func() {}}, nil
+		},
+		waitForward: func(_ context.Context, address string, _ *platformProcess) error {
+			waitedAddresses = append(waitedAddresses, address)
+			return nil
+		},
+	}
+
+	var shellRunning atomic.Bool
+	if err := platformConnectWith(context.Background(), c, &shellRunning, services); err != nil {
+		t.Fatalf("platformConnectWith() error = %v", err)
+	}
+	if containsString(capturedSSH, "-L") {
+		t.Errorf("fallback SSH arguments contain a Kubernetes API forward: %q", capturedSSH)
+	}
+	if len(waitedAddresses) != 1 || waitedAddresses[0] != profile.Loopback(c.SOCKSPort) {
+		t.Errorf("waited for %q, want only the shared SOCKS forward", waitedAddresses)
+	}
+	if kubePath := shellinit.EnvironmentValue(capturedEnv, "KUBECONFIG"); kubePath == "" || kubePath == "/clusters/ambient" {
+		t.Errorf("fallback KUBECONFIG = %q, want isolated session path", kubePath)
+	}
+	if string(emptyContents) != emptyKubeconfig {
+		t.Fatalf("fallback kubeconfig contents = %q", emptyContents)
+	}
+	if !status.KubernetesUnavailable || !reflect.DeepEqual(status.Config.AKS, c.AKS) {
+		t.Errorf("session status = %+v, want configured but unavailable Kubernetes", status)
+	}
+	for name, closed := range map[string]bool{
+		"proxy": proxyClosed.Load(), "Bastion": bastionClosed.Load(), "SSH": sshStopped.Load(),
+	} {
+		if !closed {
+			t.Errorf("%s was not cleaned up", name)
+		}
+	}
+	if _, err := os.Stat(directory); !os.IsNotExist(err) {
+		t.Errorf("session directory remains after cleanup: %v", err)
+	}
+}
+
+func TestPlatformSessionKeepsHealthyKubernetesForward(t *testing.T) {
+	t.Setenv("BIVROST_UPSTREAM_PROXY", "")
+	t.Setenv("BIVROST_ACR_UPSTREAM_PROXY", "")
+	directory := filepath.Join(t.TempDir(), "session-test")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	c := platformTestConfig(t)
+	c.AKS = &profile.AKS{Name: "cluster-one", ResourceGroup: "cluster-rg", Subscription: "cluster-subscription"}
+	proxyDone := make(chan error)
+	bastionDone := make(chan struct{})
+	sshDone := make(chan struct{})
+	var closeSSH sync.Once
+	var capturedSSH []string
+	var waited int
+	var status doctorSessionStatus
+	preparedPath := filepath.Join(directory, kubeconfigFilename)
+
+	services := platformServices{
+		environ:     func() []string { return []string{"PATH=/custom/bin"} },
+		selectShell: func() (string, []string, error) { return "/bin/bash", []string{"-i"}, nil },
+		reservePort: func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
+		startProxy: func(context.Context, profile.Profile) (*platformProxy, error) {
+			return &platformProxy{done: proxyDone, close: func() {}}, nil
+		},
+		openBastion: func(context.Context, profile.Profile) (*platformBastion, error) {
+			return &platformBastion{port: 32022, stateRoot: filepath.Dir(directory), directory: directory, sshConfig: filepath.Join(directory, "ssh_config"), done: bastionDone, close: func() { _ = os.RemoveAll(directory) }}, nil
+		},
+		prepareKubeconfig: func(context.Context, profile.Profile, string, int) (kubeTarget, error) {
+			if err := os.WriteFile(preparedPath, []byte("prepared"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return kubeTarget{path: preparedPath, host: "api.private.example", port: "443"}, nil
+		},
+		startSSH: func(_ context.Context, args []string) (*platformProcess, error) {
+			capturedSSH = append([]string(nil), args...)
+			return &platformProcess{done: sshDone, err: func() error { return nil }, stop: func() { closeSSH.Do(func() { close(sshDone) }) }}, nil
+		},
+		startShell: func(_ context.Context, _ string, _ []string, env []string) (*platformProcess, error) {
+			if got := shellinit.EnvironmentValue(env, "KUBECONFIG"); got != preparedPath {
+				t.Fatalf("healthy KUBECONFIG = %q, want %q", got, preparedPath)
+			}
+			control := readActivationControl(t, shellinit.EnvironmentValue(env, "BIVROST_CONTROL_FILE"))
+			status = doctorTestStatus(t, control)
+			done := make(chan struct{})
+			close(done)
+			return &platformProcess{done: done, err: func() error { return nil }, stop: func() {}}, nil
+		},
+		waitForward: func(context.Context, string, *platformProcess) error { waited++; return nil },
+	}
+
+	var shellRunning atomic.Bool
+	if err := platformConnectWith(context.Background(), c, &shellRunning, services); err != nil {
+		t.Fatalf("platformConnectWith() error = %v", err)
+	}
+	if !containsString(capturedSSH, "-L") || waited != 2 {
+		t.Errorf("healthy Kubernetes forwarding args=%q waits=%d, want -L and two listeners", capturedSSH, waited)
+	}
+	if status.KubernetesUnavailable {
+		t.Error("healthy Kubernetes session was marked unavailable")
+	}
+}
+
+func TestPlatformSessionAbortsOnFatalKubeconfigFailures(t *testing.T) {
+	tests := []struct {
+		name       string
+		prepareErr error
+		cancelRace bool
+	}{
+		{name: "unsafe generated kubeconfig", prepareErr: errors.New("kubeconfig API server is unsafe")},
+		{name: "direct cancellation", prepareErr: context.Canceled},
+		{name: "cancellation wins over fallback", prepareErr: &kubeUnavailableError{reason: kubeUnavailableAKSCredentials}, cancelRace: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			directory := filepath.Join(t.TempDir(), "session-test")
+			if err := os.Mkdir(directory, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			c := platformTestConfig(t)
+			c.AKS = &profile.AKS{Name: "cluster-one", ResourceGroup: "cluster-rg", Subscription: "cluster-subscription"}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var proxyClosed, bastionClosed atomic.Bool
+			var sshStarted atomic.Bool
+			services := platformServices{
+				environ:     func() []string { return []string{"PATH=/custom/bin"} },
+				reservePort: func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
+				startProxy: func(context.Context, profile.Profile) (*platformProxy, error) {
+					return &platformProxy{done: make(chan error), close: func() { proxyClosed.Store(true) }}, nil
+				},
+				openBastion: func(context.Context, profile.Profile) (*platformBastion, error) {
+					return &platformBastion{port: 32022, stateRoot: filepath.Dir(directory), directory: directory, sshConfig: filepath.Join(directory, "ssh_config"), done: make(chan struct{}), close: func() { bastionClosed.Store(true); _ = os.RemoveAll(directory) }}, nil
+				},
+				prepareKubeconfig: func(context.Context, profile.Profile, string, int) (kubeTarget, error) {
+					if test.cancelRace {
+						cancel()
+					}
+					return kubeTarget{}, test.prepareErr
+				},
+				startSSH: func(context.Context, []string) (*platformProcess, error) {
+					sshStarted.Store(true)
+					return nil, errors.New("unexpected SSH start")
+				},
+			}
+			var shellRunning atomic.Bool
+			err := platformConnectWith(ctx, c, &shellRunning, services)
+			if test.cancelRace || errors.Is(test.prepareErr, context.Canceled) {
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("platformConnectWith() error = %v, want context cancellation", err)
+				}
+			} else if !errors.Is(err, test.prepareErr) {
+				t.Fatalf("platformConnectWith() error = %v, want fatal kubeconfig error", err)
+			}
+			if sshStarted.Load() {
+				t.Error("SSH started after fatal kubeconfig failure")
+			}
+			if !proxyClosed.Load() || !bastionClosed.Load() {
+				t.Error("owned transport setup was not cleaned up after fatal kubeconfig failure")
+			}
+			if _, err := os.Stat(directory); !os.IsNotExist(err) {
+				t.Errorf("session directory remains after fatal failure: %v", err)
+			}
+		})
 	}
 }
 

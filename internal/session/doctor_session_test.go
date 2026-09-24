@@ -131,6 +131,28 @@ func TestDoctorSessionStatusTracksSuccessfulActivation(t *testing.T) {
 	}
 }
 
+func TestDoctorSessionStatusPreservesUnavailableKubernetesAfterACRActivation(t *testing.T) {
+	var starts, logins atomic.Int32
+	c := platformTestConfig(t)
+	c.AKS = &profile.AKS{Name: "example", ResourceGroup: "rg", Subscription: "sub"}
+	a, control := doctorTestController(t, c, activationTestServices(t, &starts, &logins))
+	a.mu.Lock()
+	a.kubernetesUnavailable = true
+	a.kubeconfig = filepath.Join(a.directory, "kubeconfig-empty")
+	a.mu.Unlock()
+	for _, enable := range []bool{false, true} {
+		if enable {
+			if err := a.enable(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		status := doctorTestStatus(t, control)
+		if !status.KubernetesUnavailable || status.Config.AKS == nil || status.Kubeconfig != a.kubeconfig || status.Enabled != enable {
+			t.Fatalf("Kubernetes limitation was lost or misreported: %+v", status)
+		}
+	}
+}
+
 func TestDoctorSessionStatusDoesNotPublishFailedActivation(t *testing.T) {
 	var starts, logins atomic.Int32
 	services := activationTestServices(t, &starts, &logins)

@@ -1,8 +1,8 @@
 # ADR 0004: Terraform baseline and local Azure discovery
 
-- Status: Accepted future direction
+- Status: Accepted; baseline implementation on `dev`
 - Date: 2026-09-20
-- Scope: Future work; no implementation is claimed here.
+- Scope: Incremental implementation on `dev`; backend diagnostics remain future work.
 
 ## Context
 
@@ -42,6 +42,25 @@ Users can inspect every meaningful command and retain ownership of Terraform
 state and backends. A future implementation cannot assume that Azure
 Kubernetes is available and cannot let that limitation abort an otherwise
 Terraform-capable session.
+
+## Implementation progress
+
+The development branch supports exact session-only private host routes and
+read-only `bivrost list subscriptions [--refresh]` using the local Azure CLI
+identity. Listing does not select a subscription or change project settings.
+Backend and provider subscription selection remains owned by the project;
+there is no implicit `ARM_SUBSCRIPTION_ID` or global `az account set` override.
+
+Kubernetes preparation remains automatic. Missing Kubernetes tools and AKS
+credential acquisition failures permit a session with an isolated empty
+kubeconfig. Cancellation and generated-config integrity or local-file safety
+failures remain fatal. The configured Kubernetes target is retained for a
+fresh attempt on reconnect; `doctor` reports the unavailable capability without
+probing an ambient context. Shared transport failures still end the session.
+
+Backend discovery/diagnostics and a generic command-execution lifecycle remain
+future slices. None requires Heimdal; later runtime metadata can supply the
+same connection profile inputs.
 
 ## Alternatives considered
 

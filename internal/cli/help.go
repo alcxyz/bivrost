@@ -32,6 +32,8 @@ Setup
   doctor        Check prerequisites for an environment
   login         Sign in locally with Azure CLI, when needed
   list          List connection targets (aliases: environments, env, envs)
+  list subscriptions
+                List subscriptions visible to the current Azure CLI login
   config init   Create optional user settings
   version       Show the build version (aliases: v, -v, --version)
 
@@ -129,8 +131,29 @@ not verified connectivity or permissions.
 Listing an environment does not grant access. Azure and Kubernetes
 enforce your permissions. Profiles marked requires_pim require activation.
 
+To discover subscriptions visible to your Azure CLI login, run:
+  bivrost list subscriptions [--refresh]
+
 Options
   -h, --help  Show this help
+`
+	case "list subscriptions":
+		return `List Azure subscriptions visible to the current Azure CLI login.
+
+Usage: bivrost list subscriptions [--refresh]
+
+Shows subscription name, ID, tenant, state, and which subscription Azure CLI
+currently marks as default. Discovery does not change the selected subscription,
+sign in, grant access, inspect storage, or read Terraform state.
+
+Options
+      --refresh  Retrieve an up-to-date subscription list from Azure
+  -h, --help     Show this help
+
+Without --refresh, Azure CLI may use its local subscription cache.
+The list includes enabled subscriptions in the current Azure cloud.
+If discovery fails, run bivrost login or az login, check your access and
+connectivity, then retry.
 `
 	case "version":
 		return `Show the installed Bivrost build version.
@@ -146,7 +169,7 @@ Options
 	switch topic {
 	case "connect":
 		description = "Open a local shell with platform connectivity."
-		notes = "Azure sign-in is reused. Proxy variables and kubeconfig apply only\nto this shell; your personal Kubernetes context stays unchanged.\nRepeat --private-host for exact DNS hosts needed only by this session;\nthese additions are not saved. Exit the shell to disconnect. Add --acr\nfor Podman registry access, or run bivrost acr enable inside a Bash, Zsh,\nor PowerShell session. Podman is required only when ACR is enabled."
+		notes = "Azure sign-in is reused. Proxy variables and kubeconfig apply only\nto this shell; your personal Kubernetes context stays unchanged. Kubernetes\nsetup is automatic; missing client tools or unavailable AKS credentials leave\nother commands usable with an isolated empty kubeconfig.\nRepeat --private-host for exact DNS hosts needed only by this session;\nthese additions are not saved. Exit the shell to disconnect. Add --acr\nfor Podman registry access, or run bivrost acr enable inside a Bash, Zsh,\nor PowerShell session. Podman is required only when ACR is enabled."
 		example = "bivrost connect -e example"
 	case "switch":
 		description = "Close the active session and connect to another environment."

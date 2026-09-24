@@ -19,6 +19,8 @@ func TestContextualHelpRouting(t *testing.T) {
 		{[]string{"help", "switch"}, "switch"},
 		{[]string{"config", "init", "-h"}, "config init"},
 		{[]string{"list", "--help"}, "list"},
+		{[]string{"list", "subscriptions", "--help"}, "list subscriptions"},
+		{[]string{"help", "list", "subscriptions"}, "list subscriptions"},
 		{[]string{"environments", "--help"}, "list"},
 		{[]string{"env", "--help"}, "list"},
 		{[]string{"help", "envs"}, "list"},
@@ -37,6 +39,19 @@ func TestContextualHelpRouting(t *testing.T) {
 	}
 	if strings.Contains(HelpText("connect"), "--engine") || strings.Contains(HelpText("acr login"), "--no-login") {
 		t.Fatal("command help advertises unsupported options")
+	}
+}
+
+func TestSubscriptionHelpDescribesReadOnlyDiscovery(t *testing.T) {
+	t.Parallel()
+	if !strings.Contains(HelpText("list"), "bivrost list subscriptions [--refresh]") {
+		t.Fatal("list help does not point to subscription discovery")
+	}
+	text := HelpText("list subscriptions")
+	for _, want := range []string{"Usage: bivrost list subscriptions [--refresh]", "current Azure CLI login", "does not change the selected subscription", "local subscription cache"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("subscription help missing %q", want)
+		}
 	}
 }
 
