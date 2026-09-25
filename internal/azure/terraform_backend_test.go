@@ -1,6 +1,8 @@
 package azure
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -92,5 +94,118 @@ func TestTerraformProbeAcceptsOnlyDerivedSupportedEndpoints(t *testing.T) {
 		if validTerraformBlobEndpoint("examplestate", endpoint) {
 			t.Errorf("unsafe endpoint accepted: %s", endpoint)
 		}
+	}
+}
+
+func TestTerraformProbeGuidanceUsesOnlySafeClassifications(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			name: "missing Azure CLI",
+			err:  &terraformProbeError{failure: terraformProbeFailureCLIUnavailable},
+			want: "Azure CLI is unavailable; install it, then retry",
+		},
+		{
+			name: "timeout",
+			err:  &terraformProbeError{failure: terraformProbeFailureTimeout},
+			want: "the metadata request timed out; check the network path and retry",
+		},
+		{
+			name: "login",
+			err:  fmt.Errorf("probe failed: %w", &terraformProbeError{failure: terraformProbeFailureLogin}),
+			want: "Azure CLI login is required; run bivrost login or az login, then retry",
+		},
+		{
+			name: "network",
+			err:  &terraformProbeError{failure: terraformProbeFailureNetwork},
+			want: "a network request failed while checking backend metadata; check connectivity, proxy settings, and the private route, then retry",
+		},
+		{
+			name: "unknown probe failure",
+			err:  &terraformProbeError{failure: terraformProbeFailureUnknown},
+			want: genericTerraformProbeGuidance,
+		},
+		{
+			name: "arbitrary error",
+			err:  errors.New("PRIVATE-ERROR-MARKER"),
+			want: genericTerraformProbeGuidance,
+		},
+		{
+			name: "nil",
+			want: genericTerraformProbeGuidance,
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got := TerraformProbeGuidance(test.err)
+			if got != test.want {
+				t.Errorf("TerraformProbeGuidance() = %q, want %q", got, test.want)
+			}
+			if strings.Contains(got, "PRIVATE-ERROR-MARKER") {
+				t.Error("TerraformProbeGuidance() exposed arbitrary error text")
+			}
+		})
+	}
+}
+
+func TestTerraformProbeStderrClassificationIsNarrowAndRejectsTruncation(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		stderr    string
+		truncated bool
+		want      terraformProbeFailure
+	}{
+		{
+			name:   "Azure CLI login token",
+			stderr: "ERROR: Please run 'az login' to setup account.\n",
+			want:   terraformProbeFailureLogin,
+		},
+		{
+			name:   "Azure SDK request error token",
+			stderr: "azure.core.exceptions.ServiceRequestError: request failed\n",
+			want:   terraformProbeFailureNetwork,
+		},
+		{
+			name:   "urllib3 DNS error token",
+			stderr: "urllib3.exceptions.NameResolutionError: resolution failed\n",
+			want:   terraformProbeFailureNetwork,
+		},
+		{
+			name:   "requests connection error token",
+			stderr: "requests.exceptions.ConnectionError: connection failed\n",
+			want:   terraformProbeFailureNetwork,
+		},
+		{
+			name:   "ambiguous 403",
+			stderr: "ERROR: The remote server returned an error: (403) Forbidden. AuthorizationFailure\n",
+			want:   terraformProbeFailureUnknown,
+		},
+		{
+			name:   "unqualified connection wording",
+			stderr: "ConnectionError: PRIVATE-ERROR-MARKER\n",
+			want:   terraformProbeFailureUnknown,
+		},
+		{
+			name:      "truncated login output",
+			stderr:    "ERROR: Please run 'az login' to setup account.\n",
+			truncated: true,
+			want:      terraformProbeFailureUnknown,
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := classifyTerraformProbeStderr([]byte(test.stderr), test.truncated); got != test.want {
+				t.Errorf("classifyTerraformProbeStderr() = %v, want %v", got, test.want)
+			}
+		})
 	}
 }

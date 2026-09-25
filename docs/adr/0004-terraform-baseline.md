@@ -77,6 +77,16 @@ whether the cloud-derived endpoint has an exact private route. Outside a session
 ambient network and proxy settings remain visible as an unverified route. A
 failed container-properties request reports possible login, data-plane access,
 target, cloud and network causes without guessing which caused an Azure 403.
+Missing private routes produce an exact `--private-host` option to add to the
+original connection command; the diagnostic does not modify routes or assume
+that every backend requires private routing. Runtime route distribution remains
+part of Heimdal, not a new local catalogue requirement.
+
+Probe failures may receive fixed guidance for locally detected timeouts or
+missing tools and narrowly recognised CLI login/network errors. A bounded
+in-memory stderr sample is used only for classification, never displayed or
+logged. Unknown or truncated output retains generic guidance. A network error
+does not establish whether the failed request was to storage, identity or a proxy.
 
 Generic command-execution lifecycle remains a future slice. Backend discovery
 beyond the explicit diagnostic is also deferred. Neither requires Heimdal;

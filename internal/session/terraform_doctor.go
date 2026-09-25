@@ -66,17 +66,32 @@ func runTerraformDoctor(ctx context.Context, command cli.Command, out io.Writer)
 	} else {
 		fmt.Fprintln(out, "[NOT VERIFIED] Terraform backend routing configuration: the authenticated active Bivrost session proxy will be used, but this endpoint is not an exact private route and follows the session's ambient route")
 	}
+	if session == nil || !containsExactHost(session.Config.PrivateHosts, host) {
+		writeTerraformRouteHint(out, host, session != nil)
+	}
 
 	if err := azure.ProbeTerraformBackend(ctx, target, endpoint, environment); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
-		fmt.Fprintln(out, "[ACTION NEEDED] Terraform backend metadata: the named container properties could not be verified; check Azure login, container metadata read permission, target names, active cloud, and network connectivity")
+		fmt.Fprintln(out, "[ACTION NEEDED] Terraform backend metadata: "+azure.TerraformProbeGuidance(err))
 		return errors.New("Terraform backend diagnostic needs attention; follow the guidance above")
 	}
 	fmt.Fprintln(out, "[OK] Terraform backend metadata: the signed-in Azure CLI identity can read properties for the named container")
 	fmt.Fprintln(out, "This verifies only container-properties access. It does not prove blob read, write, lease, lock, init, or plan permissions, and it did not list or read blobs or download state.")
 	return nil
+}
+
+// Keep the original target and other connection options: reconstructing a full
+// command from session status could lose a custom profile or temporary routes.
+func writeTerraformRouteHint(out io.Writer, host string, connected bool) {
+	fmt.Fprintln(out, "If this backend requires private access, add this option to your original bivrost connect command:")
+	fmt.Fprintf(out, "  --private-host %s\n", host)
+	if connected {
+		fmt.Fprintln(out, "Exit this shell first, then reconnect with the added option and repeat this diagnostic.")
+	} else {
+		fmt.Fprintln(out, "Connect with that option, then repeat this diagnostic inside the new shell.")
+	}
 }
 
 func containsExactHost(hosts []string, target string) bool {
