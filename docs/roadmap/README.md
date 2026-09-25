@@ -16,6 +16,10 @@ its implementation is complete.
 
 ## Metadata delivery order
 
+The [Azure adoption example](../heimdal-adoption.md) describes reader/publisher
+separation, independent state-maintenance PIM, and the intended CI workflow.
+It distinguishes development and planned behavior from available features.
+
 1. [Heimdal: session metadata](https://github.com/alcxyz/bivrost/milestone/1) delivers fresh per-connection
    metadata with the existing explicit local configuration fallback.
 2. [Tesseract: encrypted local configuration](https://github.com/alcxyz/bivrost/milestone/2) adds optional

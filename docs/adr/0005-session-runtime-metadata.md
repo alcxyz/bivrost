@@ -66,6 +66,13 @@ copying data. Metadata expiry does not revoke provider permissions.
 
 ## Consequences
 
+Deployment permissions separate metadata consumers, metadata publishers, and
+Terraform-state maintainers. State-maintenance access must not implicitly grant
+metadata publication rights. Provider scopes and conditions enforce that split;
+PIM controls its activation window. A shared metadata container is appropriate
+when its consumers share a read boundary. See the generic
+[Azure adoption example](../heimdal-adoption.md) for a deployment illustration.
+
 Runtime refresh can be added without turning the public catalogue into a
 secret or deployment-data store. A temporary source outage must have a clear
 fallback, and schema, size, immutable revision, atomic refresh, and version
