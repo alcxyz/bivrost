@@ -249,6 +249,17 @@ bivrost session path
 bivrost session unpublish
 ```
 
+Discovery depends on where and how you launch the client:
+
+| Client | How it finds the session |
+| --- | --- |
+| `k9s` inside Bivrost | Inherits the connected shell's `KUBECONFIG`; publishing is unnecessary. |
+| `k9s` in another terminal | Use `k9s --kubeconfig PATH` with the published path. Plain `k9s` does not automatically discover publications. |
+| Freelens/Lens | Can discover publications when configured to watch the publication directory alongside normal kubeconfig sources. |
+
+Publishing does not change another terminal's environment. A cluster appearing
+in Freelens does not mean it will also appear in plain `k9s` outside Bivrost.
+
 `publish` prints a kubeconfig path. Pass it explicitly to another terminal's
 `k9s --kubeconfig PATH` or `kubectl --kubeconfig PATH`. The file includes the
 exec authentication setup and a session-owned proxy; that terminal does not

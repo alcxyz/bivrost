@@ -60,9 +60,12 @@ Commands
 
 Publish, unpublish and path require an active Bash, Zsh or PowerShell session.
 Publish and path print only a path, suitable for use with --kubeconfig.
-For example, pass that path to k9s --kubeconfig PATH in another terminal.
-Configure GUI clients to watch the publication directory; Bivrost does not
-change their settings or your normal kubeconfig. kubelogin uses your local
+Inside the connected shell, plain k9s uses the session's KUBECONFIG.
+In another terminal, use k9s --kubeconfig PATH with the published path.
+Plain k9s there does not automatically discover published sessions.
+Freelens/Lens can discover them when configured to watch the publication
+directory. Bivrost does not change client settings or your normal kubeconfig.
+kubelogin uses your local
 Azure CLI identity. Publishing does not grant additional permissions.
 
 Publications live under $XDG_RUNTIME_DIR/bivrost/published, or
