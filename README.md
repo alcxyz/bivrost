@@ -25,6 +25,11 @@ Forgejo is a mirror. Bivrost is released under the MIT License.
 End the shell to close its tunnels, temporary files, and session-owned
 processes.
 
+**Use a trusted personal workstation.** Ordinary session tunnels are accessible
+to other local users/processes; loopback is not per-user isolation. Podman
+registry credentials may persist after disconnect. Read the
+[security boundaries](docs/security-boundaries.md) before deploying Bivrost.
+
 ## Install a release
 
 Download the archive for your operating system and CPU from
@@ -283,3 +288,41 @@ share them, commit them, or include their contents in logs.
 
 Linux and macOS desktop discovery is configured separately from Bivrost. Native
 Windows and real GUI-client behavior require live QA.
+
+## Initialise a Heimdal metadata source (development)
+
+Heimdal uses one existing Azure container by default, named `heimdal`. Each
+connection environment has its own blob prefix inside that shared container.
+The storage account and publishing subscription are explicit:
+
+```sh
+bivrost heimdal init -e example --subscription SUBSCRIPTION --account ACCOUNT \
+  --private-host state.example.net
+```
+
+This publishes `environments/example/revisions/<sha256>.json`, then
+`environments/example/current.json`. Use `--container` and `--prefix` to
+change those defaults. The revision contains schema version 1, its environment,
+issue/expiry timestamps, and exact private hosts only. Default validity is 24h;
+`--valid-for` accepts a positive duration up to 168h. No credentials, hooks,
+Terraform state, or complete connection profiles belong in this document.
+
+Initialization uses the local Azure CLI identity. An administrator must already
+provide the container and publishing permissions. Both writes are create-only;
+existing revisions and pointers are never replaced by this command. If the
+second upload is not confirmed, a revision may remain without a pointer, or the
+pointer write may have succeeded before a timeout. The error reports this
+uncertainty without deleting data.
+Local staging files are private and removed on normal completion or handled
+cancellation; an abrupt crash may leave them in the OS temporary directory.
+
+For private storage, run inside a session whose bootstrap already routes the
+metadata hostname. The command prints the source locator for the downstream
+bootstrap configuration. Separate read and publish permissions; an ordinary
+consumer should not need publishing rights. A content digest verifies the
+referenced bytes, not publisher identity; trust also depends on the configured
+source and its access controls.
+
+**This initial slice only publishes metadata.** Automatic retrieval on connect,
+validated installation of routes, updating the current pointer, and rollback
+commands are subsequent work. Terraform-state PIM access is not a prerequisite.

@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/alcxyz/bivrost/internal/azure"
 	profile "github.com/alcxyz/bivrost/internal/config"
+	"github.com/alcxyz/bivrost/internal/heimdal"
 )
 
 type Kind int
@@ -35,23 +37,26 @@ const (
 	SessionUnpublish
 	SessionPath
 	SessionClean
+	HeimdalInit
 )
 
 type Command struct {
-	Kind         Kind
-	Environment  string
-	ConfigPath   string
-	PrivateHosts []string
-	ACR          bool
-	NoPull       bool
-	NoLogin      bool
-	Tenant       string
-	Debug        bool
-	Refresh      bool
-	Subscription string
-	Account      string
-	Container    string
-	HelpTopic    string
+	Kind             Kind
+	Environment      string
+	ConfigPath       string
+	PrivateHosts     []string
+	ACR              bool
+	NoPull           bool
+	NoLogin          bool
+	Tenant           string
+	Debug            bool
+	Refresh          bool
+	Subscription     string
+	Account          string
+	Container        string
+	MetadataPrefix   string
+	MetadataValidity time.Duration
+	HelpTopic        string
 }
 
 func Parse(args []string) (Command, error) {
@@ -81,6 +86,14 @@ func Parse(args []string) (Command, error) {
 	}
 
 	switch args[0] {
+	case "heimdal":
+		if len(args) == 1 {
+			return Command{Kind: Help, HelpTopic: "heimdal"}, nil
+		}
+		if args[1] != "init" {
+			return Command{}, errors.New("use bivrost heimdal init --help")
+		}
+		return parseHeimdalInit(args[2:])
 	case "list":
 		if len(args) >= 2 && args[1] == "subscriptions" {
 			return parseSubscriptionsCommand(args[2:])
@@ -308,4 +321,49 @@ func parseLoginCommand(args []string) (Command, error) {
 		return Command{}, errors.New("--tenant requires a non-empty value")
 	}
 	return Command{Kind: Login, Tenant: *tenant, Debug: *debug}, nil
+}
+
+func parseHeimdalInit(args []string) (Command, error) {
+	flags := flag.NewFlagSet("heimdal init", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	c := Command{Kind: HeimdalInit}
+	flags.StringVar(&c.Environment, "env", "", "metadata environment")
+	flags.StringVar(&c.Environment, "e", "", "metadata environment")
+	flags.StringVar(&c.Subscription, "subscription", "", "publisher Azure subscription")
+	flags.StringVar(&c.Account, "account", "", "existing storage account")
+	flags.StringVar(&c.Container, "container", "heimdal", "existing container")
+	flags.StringVar(&c.MetadataPrefix, "prefix", "", "metadata blob prefix")
+	flags.DurationVar(&c.MetadataValidity, "valid-for", heimdal.DefaultValidity, "metadata validity")
+	flags.Func("private-host", "exact route to publish (repeatable)", func(host string) error { c.PrivateHosts = append(c.PrivateHosts, host); return nil })
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return Command{Kind: Help, HelpTopic: "heimdal init"}, nil
+		}
+		return Command{}, errors.New("invalid heimdal init options; use --help")
+	}
+	if flags.NArg() != 0 {
+		return Command{}, errors.New("heimdal init does not accept positional arguments")
+	}
+	if !profile.ValidEnvironmentName(c.Environment) {
+		return Command{}, errors.New("heimdal init requires a valid --env NAME")
+	}
+	if err := azure.ValidateTerraformBackend(azure.TerraformBackend{Subscription: c.Subscription, Account: c.Account, Container: c.Container}); err != nil {
+		return Command{}, err
+	}
+	if c.MetadataPrefix == "" {
+		c.MetadataPrefix = heimdal.DefaultPrefix(c.Environment)
+	}
+	if !heimdal.ValidPrefix(c.MetadataPrefix) {
+		return Command{}, errors.New("invalid metadata prefix; use slash-separated lowercase name segments")
+	}
+	if c.MetadataValidity <= 0 || c.MetadataValidity > heimdal.MaxValidity {
+		return Command{}, errors.New("--valid-for must be greater than zero and at most 168h")
+	}
+	if err := (profile.Profile{PrivateHosts: c.PrivateHosts}).ValidatePrivateHosts(); err != nil {
+		return Command{}, err
+	}
+	if len(c.PrivateHosts) > 128 {
+		return Command{}, errors.New("at most 128 private routes may be published")
+	}
+	return c, nil
 }

@@ -49,7 +49,7 @@ type Profile struct {
 
 var registryPattern = regexp.MustCompile(`^[a-z0-9]{5,50}$`)
 var resourcePattern = regexp.MustCompile(`(?i)^/subscriptions/[a-z0-9-]+/resourceGroups/[a-z0-9_.()-]+/providers/Microsoft\.Compute/virtualMachines/[a-z0-9_.-]+$`)
-var namePattern = regexp.MustCompile(`^[a-zA-Z0-9_.()-]+$`)
+var namePattern = regexp.MustCompile(`^[a-zA-Z0-9_.()][a-zA-Z0-9_.()-]*$`)
 
 func Load(path string) (Profile, error) {
 	c := Profile{ProxyPort: 18080, SOCKSPort: 18081}

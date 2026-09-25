@@ -23,13 +23,17 @@ switch status; merely submitting a request cannot retarget running commands.
 The owner completes old-session cleanup before starting new tunnels, kubeconfig,
 registry settings and shell. No configuration is evaluated as shell code.
 
+Controller authentication protects switch requests, not ordinary loopback
+forwards. The [trusted-host requirement](../security-boundaries.md) still applies.
+
 Shell integration refuses switching when the shell reports active or stopped
 jobs; PowerShell also requires removing retained job records. Detached processes are not migrated or promised to be tracked; users must
 finish their work before switching. Shell-local state and directory changes are
 not carried into the fresh shell. Ordinary exit remains a disconnect.
 
-Registry activation is opt-in for each target using `--acr`; neither activation
-nor credentials are inherited from the old session. Existing provider access and
+Registry activation is opt-in for each target using `--acr`; activation is not
+inherited from the old session. Podman's normal registry credentials may persist
+independently of session switching. Existing provider access and
 PIM requirements still apply. This feature does not activate privileges.
 
 Validation failure leaves the current session intact. A connection failure after
