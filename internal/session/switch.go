@@ -30,7 +30,8 @@ type switchRequest struct {
 }
 
 type switchReconnectError struct {
-	config profile.Profile
+	config    profile.Profile
+	published bool
 }
 
 func (e *switchReconnectError) Error() string {

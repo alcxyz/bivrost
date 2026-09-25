@@ -25,6 +25,7 @@ Usage: bivrost <command> [options]
 Access
   connect       Open a local shell for platform commands
   switch        Reconnect the active shell to another environment
+  session       Share the active Kubernetes session with other local tools
   ssh           Open a shell on the management VM
   acr           Access container images with Podman
 
@@ -45,6 +46,31 @@ Start here
 
 Help: bivrost <command> --help  or  bivrost help <command>
 For image access: bivrost acr --help
+`
+	case "session", "session publish", "session unpublish", "session path", "session clean":
+		return `Share a Kubernetes session with other local tools, explicitly.
+
+Usage: bivrost session <command>
+
+Commands
+  publish     Publish this session's temporary kubeconfig; print its path
+  unpublish   Withdraw it and close published client connections
+  path        Print the current published kubeconfig path
+  clean       Remove stale publications (can run outside a session)
+
+Publish, unpublish and path require an active Bash, Zsh or PowerShell session.
+Publish and path print only a path, suitable for use with --kubeconfig.
+For example, pass that path to k9s --kubeconfig PATH in another terminal.
+Configure GUI clients to watch the publication directory; Bivrost does not
+change their settings or your normal kubeconfig. kubelogin uses your local
+Azure CLI identity. Publishing does not grant additional permissions.
+
+Publications live under $XDG_RUNTIME_DIR/bivrost/published, or
+${XDG_STATE_HOME:-$HOME/.local/state}/bivrost/published when unset.
+Switching withdraws the old publication and publishes a new target with a
+new path. Existing clients are disconnected, never silently retargeted.
+Exit withdraws the publication. After a crash, stale files cannot connect;
+clean removes them, and publish also performs this cleanup.
 `
 	case "acr":
 		return `Enable local Podman access to private container images.

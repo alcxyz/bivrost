@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -145,18 +146,21 @@ func TestPlatformSwitchCleansUpBeforeOpeningNextTarget(t *testing.T) {
 		failNextConnection  bool
 		wantSessions        int32
 		wantConnectionError bool
+		publish             bool
 	}{
 		{name: "accepted exit reconnects", firstShellErr: exitCodeError(SwitchShellExitCode), wantSessions: 2},
 		{name: "next setup failure returns", firstShellErr: exitCodeError(SwitchShellExitCode), failNextConnection: true, wantSessions: 2, wantConnectionError: true},
 		{name: "ordinary exit ignores pending target", wantSessions: 1},
+		{name: "publication follows switch with new path", firstShellErr: exitCodeError(SwitchShellExitCode), wantSessions: 2, publish: true},
+		{name: "publication removed on failed reconnect", firstShellErr: exitCodeError(SwitchShellExitCode), failNextConnection: true, wantSessions: 2, wantConnectionError: true, publish: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			testPlatformSwitchLifecycle(t, test.firstShellErr, test.failNextConnection, test.wantSessions, test.wantConnectionError)
+			testPlatformSwitchLifecycle(t, test.firstShellErr, test.failNextConnection, test.wantSessions, test.wantConnectionError, test.publish)
 		})
 	}
 }
 
-func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConnection bool, wantSessions int32, wantConnectionError bool) {
+func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConnection bool, wantSessions int32, wantConnectionError bool, publish bool) {
 	t.Helper()
 	t.Setenv("BIVROST_UPSTREAM_PROXY", "")
 	t.Setenv("BIVROST_ACR_UPSTREAM_PROXY", "")
@@ -165,6 +169,13 @@ func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConn
 	first.Environment = "first"
 	second := platformTestConfig(t)
 	second.Environment = "second"
+	var publicationInput []byte
+	var firstPublication string
+	if publish {
+		_, publicationInput = publicationFixture(t)
+		first.AKS = &profile.AKS{Name: "first", ResourceGroup: "group", Subscription: "subscription"}
+		second.AKS = &profile.AKS{Name: "second", ResourceGroup: "group", Subscription: "subscription"}
+	}
 	targetPath := filepath.Join(t.TempDir(), "second.json")
 	if err := writeConfigFile(targetPath, second); err != nil {
 		t.Fatal(err)
@@ -181,6 +192,11 @@ func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConn
 			current := session.Add(1)
 			if current == 2 && (!firstProxyClosed.Load() || !firstBastionClosed.Load() || !firstSSHStopped.Load()) {
 				t.Fatal("next target started before the previous target was cleaned up")
+			}
+			if current == 2 && firstPublication != "" {
+				if _, err := os.Stat(firstPublication); !os.IsNotExist(err) {
+					t.Fatal("old publication retained during next setup")
+				}
 			}
 			if current == 2 && failNextConnection {
 				return nil, nextConnectionFailure
@@ -210,9 +226,13 @@ func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConn
 				},
 			}, nil
 		},
-		prepareKubeconfig: func(context.Context, profile.Profile, string, int) (kubeTarget, error) {
-			t.Fatal("prepareKubeconfig called without AKS")
-			return kubeTarget{}, nil
+		prepareKubeconfig: func(_ context.Context, _ profile.Profile, dir string, _ int) (kubeTarget, error) {
+			if !publish {
+				t.Fatal("prepareKubeconfig called without AKS")
+			}
+			path := filepath.Join(dir, "kubeconfig")
+			err := os.WriteFile(path, publicationInput, 0600)
+			return kubeTarget{path: path, host: "cluster.example.test", port: "443"}, err
 		},
 		startSSH: func(context.Context, []string) (*platformProcess, error) {
 			current := session.Load()
@@ -235,6 +255,9 @@ func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConn
 		stop := func() { once.Do(func() { close(done) }) }
 		if current == 1 {
 			control := readActivationControl(t, shellinit.EnvironmentValue(env, "BIVROST_CONTROL_FILE"))
+			if publish {
+				firstPublication = publicationControlPath(t, control, "/publish")
+			}
 			body, _ := json.Marshal(switchRequest{ConfigPath: targetPath})
 			response := postSwitchRequest(t, control, control.Token, body)
 			io.Copy(io.Discard, response.Body)
@@ -248,6 +271,16 @@ func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConn
 			close(done)
 			return &platformProcess{done: done, err: func() error { return firstShellErr }, stop: func() {}}, nil
 		}
+		if publish {
+			control := readActivationControl(t, shellinit.EnvironmentValue(env, "BIVROST_CONTROL_FILE"))
+			path := publicationControlPath(t, control, "/publication-path")
+			if path == firstPublication {
+				t.Fatal("switch reused published path")
+			}
+			if _, err := os.Stat(path); err != nil {
+				t.Fatal("new publication missing", err)
+			}
+		}
 		stop()
 		return &platformProcess{done: done, err: func() error { return nil }, stop: stop}, nil
 	}
@@ -260,6 +293,16 @@ func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConn
 		}
 	} else if err != nil {
 		t.Fatalf("platformConnectLoop: %v", err)
+	}
+	if publish {
+		root, err := publicationRoot()
+		if err != nil {
+			t.Fatal(err)
+		}
+		files, err := os.ReadDir(root)
+		if err != nil || len(files) != 0 {
+			t.Fatal("publication remains after final disconnect", err)
+		}
 	}
 	if session.Load() != wantSessions {
 		t.Fatalf("opened %d sessions, want %d", session.Load(), wantSessions)
@@ -306,4 +349,22 @@ func writeConfigFile(path string, c profile.Profile) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o600)
+}
+
+func publicationControlPath(t *testing.T, control activationControl, endpoint string) string {
+	t.Helper()
+	req, _ := http.NewRequest("POST", "http://"+control.Address+endpoint, nil)
+	req.Header.Set("Authorization", "Bearer "+control.Token)
+	client := &http.Client{Timeout: time.Second, Transport: &http.Transport{Proxy: nil}}
+	defer client.CloseIdleConnections()
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("publication request failed: %d", resp.StatusCode)
+	}
+	return strings.TrimSpace(string(data))
 }

@@ -97,16 +97,18 @@ func platformConnect(ctx context.Context, c profile.Profile) error {
 
 func platformConnectLoop(ctx context.Context, c profile.Profile, shellRunning *atomic.Bool, services platformServices) error {
 	prompt := c.Prompt
+	published := false
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		c.Prompt = prompt
-		err := platformConnectWith(ctx, c, shellRunning, services)
+		err := platformConnectWithPublication(ctx, c, shellRunning, services, published)
 		var reconnect *switchReconnectError
 		if !errors.As(err, &reconnect) {
 			return err
 		}
+		published = reconnect.published
 		c = reconnect.config
 		if c.RequiresPIM {
 			fmt.Println("This environment requires PIM activation. Activate your eligible access before connecting; this tool does not grant or activate permissions.")
@@ -115,6 +117,10 @@ func platformConnectLoop(ctx context.Context, c profile.Profile, shellRunning *a
 }
 
 func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *atomic.Bool, services platformServices) error {
+	return platformConnectWithPublication(ctx, c, shellRunning, services, false)
+}
+
+func platformConnectWithPublication(ctx context.Context, c profile.Profile, shellRunning *atomic.Bool, services platformServices, resumePublication bool) error {
 	defer func() { diagnostics.Event(ctx, diagnostics.EventCleanup) }()
 	if shellinit.EnvironmentValue(services.environ(), "BIVROST_SESSION") != "" {
 		return errors.New("a Bivrost platform session is already active; exit it before starting another")
@@ -228,6 +234,11 @@ func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *a
 	if err != nil {
 		return err
 	}
+	if resumePublication && c.AKS != nil && !activation.kubernetesUnavailable {
+		if _, err := activation.publish(); err != nil {
+			return err
+		}
+	}
 	shellArgs, shellEnv, err = shellinit.PreparePrompt(bastion.directory, shellName, shellArgs, shellEnv, c)
 	if err != nil {
 		return err
@@ -247,6 +258,11 @@ func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *a
 		fmt.Println(podmanBuildGuidance)
 	} else {
 		fmt.Println("Enable Podman registry access with bivrost acr enable in supported shells, or reconnect with --acr. Exit to disconnect.")
+	}
+	if activation.isPublished() {
+		fmt.Println("Kubernetes session published for local clients; use bivrost session path to see its new path.")
+	} else if resumePublication {
+		fmt.Println("Session sharing was not resumed because Kubernetes is unavailable.")
 	}
 	fmt.Println("Azure CLI keeps its selected subscription; use --subscription when a command targets another subscription.")
 
@@ -282,7 +298,7 @@ func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *a
 		err := shell.err()
 		if isSwitchShellExit(err) {
 			if target, ok := activation.pendingSwitch(); ok {
-				return &switchReconnectError{config: target}
+				return &switchReconnectError{config: target, published: activation.isPublished()}
 			}
 		}
 		if err != nil {

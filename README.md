@@ -238,3 +238,37 @@ after each release promotion.
 Consumers tracking `main` receive the release line; consumers tracking `dev`
 explicitly opt into unreleased work. Release tags identify immutable published
 builds. See [ADR 0007](docs/adr/0007-release-distribution.md).
+
+## Share a Kubernetes session with local tools
+
+Inside a connected session:
+
+```sh
+bivrost session publish
+bivrost session path
+bivrost session unpublish
+```
+
+`publish` prints a kubeconfig path. Pass it explicitly to another terminal's
+`k9s --kubeconfig PATH` or `kubectl --kubeconfig PATH`. The file includes the
+exec authentication setup and a session-owned proxy; that terminal does not
+need the connected shell's proxy variables.
+
+Desktop clients can watch `$XDG_RUNTIME_DIR/bivrost/published`, or
+`${XDG_STATE_HOME:-$HOME/.local/state}/bivrost/published` when XDG_RUNTIME_DIR is
+unset. Add that directory alongside your normal kubeconfig sources using the
+client's supported settings. Bivrost does not configure the client for you.
+
+Publishing is opt-in and does not change your normal kubeconfig or context.
+Unpublish disconnects published clients while leaving the connected shell
+usable. Exit removes the publication. Switching creates a new context and path;
+select it explicitly in external clients. If the new session has no Kubernetes
+access, nothing is published.
+
+After a crash, a stale file may remain but cannot use a replacement session's
+transport. `bivrost session clean` removes recognised stale publications; publish
+also performs this cleanup. The files are private local capabilities: do not
+share them, commit them, or include their contents in logs.
+
+Linux and macOS desktop discovery is configured separately from Bivrost. Native
+Windows and real GUI-client behavior require live QA.

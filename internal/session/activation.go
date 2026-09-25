@@ -41,6 +41,7 @@ type acrActivation struct {
 	server                   *http.Server
 	done                     chan struct{}
 	pending                  *profile.Profile
+	publication              *sessionPublication
 }
 
 func activationShell(shell string) bool {
@@ -168,8 +169,12 @@ func (a *acrActivation) listen(env []string) ([]string, error) {
 		return nil, errors.New("cannot write session control capability")
 	}
 	a.server = &http.Server{ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 3 * time.Minute, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || (r.URL.Path != "/enable" && r.URL.Path != "/status" && r.URL.Path != "/switch") || r.Header.Get("Origin") != "" || subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+control.Token)) != 1 {
+		if r.Method != "POST" || (r.URL.Path != "/enable" && r.URL.Path != "/status" && r.URL.Path != "/switch" && r.URL.Path != "/publish" && r.URL.Path != "/unpublish" && r.URL.Path != "/publication-path") || r.Header.Get("Origin") != "" || subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+control.Token)) != 1 {
 			http.Error(w, "session request rejected", http.StatusForbidden)
+			return
+		}
+		if r.URL.Path == "/publish" || r.URL.Path == "/unpublish" || r.URL.Path == "/publication-path" {
+			a.handlePublication(w, r)
 			return
 		}
 		if r.URL.Path == "/switch" {
@@ -261,6 +266,9 @@ func (a *acrActivation) close() {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.publication != nil {
+		a.publication.close()
+	}
 	if a.session != nil {
 		a.session.close()
 	}
