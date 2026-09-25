@@ -133,7 +133,9 @@ Restore the missing tools or access and reconnect to retry Kubernetes setup.
 Cancellation, unsafe generated configuration, and failures in shared transport
 or local file protection still stop connection setup.
 
-Backend-specific diagnostics and generic command execution remain planned in
+`bivrost doctor terraform` checks an explicitly selected backend container's
+properties; it does not establish state read/write or lease permissions. The
+remaining Terraform workflow and generic command execution are tracked in
 [issue #5](https://github.com/alcxyz/bivrost/issues/5). Bivrost does not run
 `terraform init`, read state, or acquire a backend lock during connection or
 subscription discovery. Terraform commands you run yourself retain their normal
@@ -326,6 +328,51 @@ should not need publishing rights. A content digest verifies the referenced
 bytes, not publisher identity; trust also depends on the configured source and
 its access controls.
 
-**This initial slice only publishes metadata.** Automatic retrieval on connect,
-validated installation of routes, updating the current pointer, and rollback
-commands are subsequent work. Terraform-state PIM access is not a prerequisite.
+Initial publication and opt-in retrieval are available on `dev`. Updating the
+current pointer and rollback commands remain subsequent work. Terraform-state
+PIM access is not a prerequisite.
+
+### Fetch metadata when connecting (development)
+
+Add a `heimdal` object to your existing connection profile or downstream
+catalogue entry. For example:
+
+```json
+{
+  "heimdal": {
+    "subscription": "METADATA-SUBSCRIPTION-ID",
+    "account": "examplemetadata",
+    "environment": "example",
+    "container": "heimdal",
+    "prefix": "environments/example",
+    "allow_local_fallback": false
+  }
+}
+```
+
+This is a fragment, not a complete connection profile. `container` defaults to
+`heimdal`; `prefix` defaults to `environments/<environment>`. The explicit
+metadata environment is validated against both documents and can differ from
+your local connection alias. The metadata subscription is independent of the
+Bastion subscription; Bivrost does not change your Azure CLI selection.
+
+For a private source, include its exact Blob hostname (for example
+`examplemetadata.blob.core.windows.net`) in the profile's `private_hosts` or
+pass it with `--private-host`. Metadata cannot supply the route needed to fetch
+itself. An unconfigured private source may be unreachable; no automatic network
+discovery or privilege activation is performed.
+
+`connect`, `connect --acr` and managed `switch` fetch a fresh pointer and revision
+after the bootstrap tunnel is ready. Bivrost validates them before adding the
+routes and opening the shell. Use `bivrost doctor` inside the supported session
+to inspect its effective configuration, including acquired routes. No response
+is cached on disk. Expiry is checked when metadata is acquired; there is no
+background refresh or automatic shutdown when metadata later expires.
+
+A failed fetch or invalid document stops connection setup by default. Set
+`allow_local_fallback` to `true` only when your local profile is sufficient:
+Bivrost then reports the failure and opens using local routes alone, without
+any routes from an earlier download. This includes visibly reported permission
+denials and validation failures. Cancellation always stops setup. Profiles
+without `heimdal` retain the normal local-only behavior. Standalone `ssh` and
+proxy commands do not retrieve Heimdal metadata.

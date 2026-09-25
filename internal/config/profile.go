@@ -35,6 +35,7 @@ type Profile struct {
 	Environment          string          `json:"-"`
 	AKS                  *AKS            `json:"aks,omitempty"`
 	PrivateHosts         []string        `json:"private_hosts,omitempty"`
+	Heimdal              *HeimdalSource  `json:"heimdal,omitempty"`
 	Registry             string          `json:"registry"`
 	RegistrySubscription string          `json:"registry_subscription"`
 	Subscription         string          `json:"subscription"`
@@ -96,6 +97,11 @@ func (c Profile) ValidateProxy() error {
 }
 
 func (c Profile) ValidatePlatform() error {
+	if c.Heimdal != nil {
+		if err := c.Heimdal.Validate(); err != nil {
+			return err
+		}
+	}
 	if err := c.ValidateConnection(); err != nil {
 		return err
 	}

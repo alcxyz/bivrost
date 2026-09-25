@@ -72,8 +72,9 @@ Inside a Bivrost session, uploads use its configured proxy; configure the metada
 storage hostname as a private route when needed. Outside a session, normal
 network settings apply. No account, container, roles or public access are created.
 
-This first slice publishes route-only metadata. Automatic session retrieval
-and later revision publication are not implemented yet. No Terraform state is used.
+This command publishes route-only metadata. Configure a profile's heimdal source
+for retrieval on connect. Updating an existing pointer and rollback are not
+implemented yet. No Terraform state is used.
 `
 	case "session", "session publish", "session unpublish", "session path", "session clean":
 		return `Share a Kubernetes session with other local tools, explicitly.

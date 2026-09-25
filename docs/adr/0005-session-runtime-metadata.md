@@ -1,11 +1,11 @@
 # ADR 0005: Heimdal session-only runtime metadata
 
-- Status: Accepted future direction
+- Status: Accepted; initial publication and retrieval on `dev`
 - Date: 2026-09-20
-- Scope: Runtime acquisition is future work; initial publication is in development.
+- Scope: Initial publication and startup retrieval; ongoing publication and rollback remain future work.
 
-An initial publication slice is in development. Runtime acquisition remains
-future work; the contract below does not claim sessions already fetch metadata.
+Initial publication and opt-in startup retrieval are implemented on the
+development branch. They are not part of the current stable release.
 
 ## Context
 
@@ -16,7 +16,7 @@ unvalidated remote document must never become executable configuration.
 ## Decision
 
 Heimdal names the metadata acquisition component of Bivrost, not a separate
-server. Future sessions may fetch runtime metadata from a private Blob source after
+server. Configured sessions fetch runtime metadata from a private Blob source after
 bootstrap, using the already established local identity. The response must be
 bounded by a size limit and validated as data against an explicit schema and
 an immutable revision before use. A refresh is parsed and validated off to the
@@ -81,9 +81,34 @@ infrastructure, changes permissions or replaces an existing pointer. A failed
 response can leave uncertain publication state, so errors do not trigger deletion.
 
 Content addressing and the decoder's digest check are integrity controls, not
-storage-enforced immutability or independent publisher authentication. Runtime
-retrieval, validated installation, ongoing pointer updates and rollback remain
-separate work. The adopter owns retention and publisher trust.
+storage-enforced immutability or independent publisher authentication. Ongoing
+pointer updates and rollback remain separate work. The adopter owns retention
+and publisher trust.
+
+### Startup retrieval
+
+An optional `heimdal` bootstrap object identifies the subscription, account,
+container, prefix and expected metadata environment. Source locators never come
+from downloaded metadata. The endpoint is derived from the active supported
+Azure cloud. Private-source routing must already be present in local bootstrap
+configuration. Fetch the current pointer, then its exact digest-named revision
+through the startup proxy using Entra Blob authorization. Refuse redirects,
+bound response sizes and timeouts, and validate exact field names, unique keys,
+environment, digest, routes and validity before installing anything.
+
+Only after successful validation, replace the startup router with one combining
+bootstrap and metadata routes, before shell, controller and ACR activation.
+No active-shell refresh is provided. Metadata expiry is checked at acquisition;
+it does not stop an established session or revoke provider access. Every new
+connection or managed switch fetches again. Responses stay in memory; nothing
+is cached on disk for later connections.
+
+By default a configured source failure stops setup. Explicit
+`allow_local_fallback: true` permits the existing local configuration alone,
+with the source and failure reported, including authorization or validation
+errors. This is an adopter's assertion that local configuration is sufficient;
+it does not reuse previously downloaded routes. Cancellation always stops setup.
+Malformed local source configuration is an error even when fallback is enabled.
 
 Deployment permissions separate metadata consumers, metadata publishers, and
 Terraform-state maintainers. State-maintenance access must not implicitly grant
@@ -92,10 +117,10 @@ PIM controls its activation window. A shared metadata container is appropriate
 when its consumers share a read boundary. See the generic
 [Azure adoption example](../heimdal-adoption.md) for a deployment illustration.
 
-Runtime refresh can be added without turning the public catalogue into a
-secret or deployment-data store. A temporary source outage must have a clear
-fallback, and schema, size, immutable revision, atomic refresh, and version
-behavior require review before any implementation is accepted.
+Runtime acquisition keeps deployment data outside the public catalogue. Source
+outages have explicit fallback behavior. Future publication/update work must
+preserve schema, size, revision-integrity and atomic-installation checks and
+must not introduce silent active-session changes.
 
 ## Alternatives considered
 
