@@ -15,11 +15,12 @@ subject to the management server's SSH forwarding policy. This provides network
 reachability, not the owner's Azure or Kubernetes credentials. Services that
 trust network location alone remain exposed to that reachability.
 
-Session controller and published Kubernetes gateway capabilities protect those
-interfaces only. They do not protect the backing SOCKS listener, the ordinary
-HTTP proxy, or the local Kubernetes TCP forward. Adding HTTP authentication
-alone would not establish cross-user isolation. Server-side forwarding limits
-and resource authorization remain necessary deployment controls.
+The session controller and the published Kubernetes gateway each require a
+random capability token. Those tokens protect only those two interfaces. They
+do not protect the backing SOCKS listener, the ordinary HTTP proxy, or the
+local Kubernetes TCP forward. Adding HTTP authentication alone would not
+establish cross-user isolation. Server-side forwarding limits and resource
+authorization remain necessary deployment controls.
 
 Supporting untrusted co-resident users requires a transport redesign protecting
 all backing forwards as well as client-facing proxies, with cross-user tests
@@ -38,8 +39,8 @@ may share that login; blindly logging out on exit would disrupt them.
 
 If session-only registry credentials are required, they need a separate owned
 auth store and verified native/Podman Machine support before cleanup can make
-that guarantee. Local processes running as the same user remain within the
-user's credential trust boundary.
+that guarantee. Processes running as the same OS user are inside that user's
+credential trust boundary; Bivrost does not protect against them.
 
 ## Metadata and authorization
 

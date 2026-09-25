@@ -21,9 +21,10 @@ but it will not grant roles, activate access, or hide a change in scope.
 The Bivrost discovery and diagnostic paths will not implicitly download or
 inspect Terraform state, migrate a backend, or acquire a state lock. A user
 who explicitly runs ordinary Terraform retains Terraform's normal behavior,
-including `plan` state reads and locks. The baseline includes ordinary `kubectl` and Terraform commands without an
-extra kube enable ceremony. If the Azure Kubernetes target is unavailable, a
-session that can otherwise run Terraform remains usable and reports the
+including `plan` state reads and locks. The baseline includes ordinary
+`kubectl` and Terraform commands without an extra kube enable ceremony. If the
+Azure Kubernetes target is unavailable, a session that can otherwise run
+Terraform remains usable and reports the
 Kubernetes limitation clearly. It never falls back to the ambient Kubernetes
 context.
 

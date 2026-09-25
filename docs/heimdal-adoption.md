@@ -10,8 +10,8 @@ loopback tunnels do not isolate other local users or workloads; see
 
 **Implementation status:** `heimdal init` is under development for first-time
 publication to an existing container. Runtime retrieval, ongoing publication
-and rollback, and Bivrost-managed PIM activation are planned features. Use the
-provider's PIM interface today; there is no implied `bivrost pim` command.
+and rollback, and Bivrost-managed PIM activation are planned features. Activate
+PIM through the provider's own interface today; Bivrost has no `pim` command.
 
 ## Storage and ownership
 
@@ -106,9 +106,10 @@ provide a partial path condition that could be mistaken for complete isolation.
    requires production PIM, users must be able to discover and activate that
    eligibility before fetching it; do not hide the activation prerequisites
    exclusively inside the gated document.
-3. **Initialize the source.** Once available, the development `heimdal init`
-   command uses the signed-in Azure CLI identity, which can be a human or a CI
-   workload identity. The existing container and write permission are required.
+3. **Initialize the source.** The `heimdal init` command, still under
+   development, uses the signed-in Azure CLI identity, which can be a human or
+   a CI workload identity. The container must already exist, and the identity
+   must already hold write permission on it.
    Authenticate CI through the organization's federated workload identity flow;
    never store publishing credentials in metadata.
    Bind federation to the intended issuer, audience and protected publishing

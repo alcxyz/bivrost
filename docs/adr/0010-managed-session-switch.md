@@ -27,9 +27,10 @@ Controller authentication protects switch requests, not ordinary loopback
 forwards. The [trusted-host requirement](../security-boundaries.md) still applies.
 
 Shell integration refuses switching when the shell reports active or stopped
-jobs; PowerShell also requires removing retained job records. Detached processes are not migrated or promised to be tracked; users must
-finish their work before switching. Shell-local state and directory changes are
-not carried into the fresh shell. Ordinary exit remains a disconnect.
+jobs; PowerShell also requires removing retained job records. Detached
+processes are not migrated or promised to be tracked; users must finish their
+work before switching. Shell-local state and directory changes are not carried
+into the fresh shell. Ordinary exit remains a disconnect.
 
 Registry activation is opt-in for each target using `--acr`; activation is not
 inherited from the old session. Podman's normal registry credentials may persist
