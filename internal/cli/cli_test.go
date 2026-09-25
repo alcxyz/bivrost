@@ -229,6 +229,35 @@ func TestParseSubscriptionDiscoveryDoesNotChangeListAliases(t *testing.T) {
 	}
 }
 
+func TestParseTerraformDoctorRequiresExplicitValidatedTarget(t *testing.T) {
+	t.Parallel()
+	command, err := Parse([]string{
+		"doctor", "terraform",
+		"--subscription", "11111111-1111-4111-8111-111111111111",
+		"--account", "examplestate",
+		"--container", "tfstate-prod",
+		"--debug",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if command.Kind != TerraformDoctor || command.Subscription == "" || command.Account != "examplestate" || command.Container != "tfstate-prod" || !command.Debug {
+		t.Fatalf("Parse(doctor terraform) = %+v", command)
+	}
+	for _, args := range [][]string{
+		{"doctor", "terraform"},
+		{"doctor", "terraform", "--subscription", "sub", "--account", "Example", "--container", "state"},
+		{"doctor", "terraform", "--subscription", "sub", "--account", "example", "--container", "bad--name"},
+		{"doctor", "terraform", "--subscription", "-other", "--account", "example", "--container", "state"},
+		{"doctor", "terraform", "--subscription", "sub", "--account", "example", "--container", "state", "extra"},
+		{"doctor", "terraform", "--subscription", "sub", "--account", "example", "--container", "state", "--env", "dev"},
+	} {
+		if _, err := Parse(args); err == nil {
+			t.Errorf("Parse(%q) accepted an incomplete or unsafe target", args)
+		}
+	}
+}
+
 func TestDebugFlagIsOptInAcrossOperationalCommands(t *testing.T) {
 	for _, args := range [][]string{
 		{"connect", "-e", "staging"}, {"ssh", "-e", "development"}, {"login"},

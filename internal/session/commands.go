@@ -101,6 +101,9 @@ func Run(args []string, version string) (resultErr error) {
 	if command.Kind == cli.Login {
 		return localAzureLogin(ctx, command.Tenant)
 	}
+	if command.Kind == cli.TerraformDoctor {
+		return runTerraformDoctor(ctx, command, os.Stdout)
+	}
 
 	if command.Kind == cli.Doctor {
 		return runDoctor(ctx, command, os.Stdout)

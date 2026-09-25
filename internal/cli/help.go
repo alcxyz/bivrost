@@ -31,6 +31,8 @@ Access
 
 Setup
   doctor        Check prerequisites for an environment
+  doctor terraform
+                Probe explicit Azure Blob backend container metadata
   login         Sign in locally with Azure CLI, when needed
   list          List connection targets (aliases: environments, env, envs)
   list subscriptions
@@ -184,6 +186,30 @@ The list includes enabled subscriptions in the current Azure cloud.
 If discovery fails, run bivrost login or az login, check your access and
 connectivity, then retry.
 `
+	case "doctor terraform":
+		return `Check explicit Azure Blob backend container metadata with your Azure CLI login.
+
+Usage: bivrost doctor terraform --subscription NAME_OR_ID --account NAME --container NAME [options]
+
+The command derives the Blob endpoint from the active supported Azure CLI cloud,
+then requests properties for only the named container with Microsoft Entra login.
+It does not select a subscription globally, set ARM variables, require Terraform,
+list or read blobs, download state, run init, or acquire a state lock.
+
+Inside an authenticated Bivrost session, the probe is forced through that
+session's proxy and reports whether the endpoint has an exact private route.
+Outside a session, ambient network and proxy settings apply. A failed probe does
+not by itself distinguish login, authorization, target, or network failures.
+
+Required target
+      --subscription NAME_OR_ID  Project-owned backend subscription
+      --account NAME             Azure storage account name
+      --container NAME           Azure Blob container name
+
+Options
+  -d, --debug  Record a bounded local diagnostic log
+  -h, --help   Show this help
+`
 	case "version":
 		return `Show the installed Bivrost build version.
 
@@ -210,7 +236,7 @@ Options
 		example = "bivrost ssh -e example"
 	case "doctor":
 		description = "Check environment prerequisites without changing your setup."
-		notes = "Inside a supported Bivrost session, the target defaults to that session.\nChecks active Podman settings and registry login history, plus read-only\nKubernetes API and node-list requests in a matching session.\nWith ACR enabled, pulls the configured diagnostic image (cached locally).\nUse --no-pull to skip this check. NOT VERIFIED means a live or manual check is still needed. Does not install tools, log in,\nstart tunnels, activate PIM, or restart services."
+		notes = "Inside a supported Bivrost session, the target defaults to that session.\nChecks active Podman settings and registry login history, plus read-only\nKubernetes API and node-list requests in a matching session.\nWith ACR enabled, pulls the configured diagnostic image (cached locally).\nUse --no-pull to skip this check. For an explicit Azure Blob backend metadata\nprobe, use bivrost doctor terraform --help. NOT VERIFIED means a live or manual\ncheck is still needed. Does not install tools, log in, start tunnels, activate\nPIM, or restart services."
 		example = "bivrost doctor -e example"
 	case "acr proxy":
 		description = "Run an advanced standalone HTTPS proxy for Podman."
