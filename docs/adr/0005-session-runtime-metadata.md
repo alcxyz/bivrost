@@ -2,7 +2,10 @@
 
 - Status: Accepted future direction
 - Date: 2026-09-20
-- Scope: Future work; no implementation is claimed here.
+- Scope: Runtime acquisition is future work; initial publication is in development.
+
+An initial publication slice is in development. Runtime acquisition remains
+future work; the contract below does not claim sessions already fetch metadata.
 
 ## Context
 
@@ -65,6 +68,29 @@ best-effort on abnormal termination and cannot prevent an authorized user from
 copying data. Metadata expiry does not revoke provider permissions.
 
 ## Consequences
+
+### Initial publication slice
+
+The initial `heimdal init` interface targets an existing Azure container
+(`heimdal` by default), with an overridable `environments/<environment>` prefix.
+Schema version 1 contains only environment, timestamps and exact private hosts;
+it has a 64 KiB size limit and a maximum seven-day validity (24 hours by default).
+The writer uploads a content-addressed revision followed by a current pointer,
+using Entra authentication and create-only conditions for both. It never creates
+infrastructure, changes permissions or replaces an existing pointer. A failed
+response can leave uncertain publication state, so errors do not trigger deletion.
+
+Content addressing and the decoder's digest check are integrity controls, not
+storage-enforced immutability or independent publisher authentication. Runtime
+retrieval, validated installation, ongoing pointer updates and rollback remain
+separate work. The adopter owns retention and publisher trust.
+
+Deployment permissions separate metadata consumers, metadata publishers, and
+Terraform-state maintainers. State-maintenance access must not implicitly grant
+metadata publication rights. Provider scopes and conditions enforce that split;
+PIM controls its activation window. A shared metadata container is appropriate
+when its consumers share a read boundary. See the generic
+[Azure adoption example](../heimdal-adoption.md) for a deployment illustration.
 
 Runtime refresh can be added without turning the public catalogue into a
 secret or deployment-data store. A temporary source outage must have a clear

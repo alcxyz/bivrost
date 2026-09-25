@@ -13,8 +13,13 @@ its implementation is complete.
 - [#8: add Tesseract encrypted local configuration](https://github.com/alcxyz/bivrost/issues/8)
 
 - [#10: incremental multi-cloud capability boundaries](https://github.com/alcxyz/bivrost/issues/10)
+- [#28: isolate session transports from unrelated local users](https://github.com/alcxyz/bivrost/issues/28)
 
 ## Metadata delivery order
+
+The [Azure adoption example](../heimdal-adoption.md) describes reader/publisher
+separation, independent state-maintenance PIM, and the intended CI workflow.
+It distinguishes development and planned behavior from available features.
 
 1. [Heimdal: session metadata](https://github.com/alcxyz/bivrost/milestone/1) delivers fresh per-connection
    metadata with the existing explicit local configuration fallback.

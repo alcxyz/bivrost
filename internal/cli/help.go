@@ -30,6 +30,7 @@ Access
   acr           Access container images with Podman
 
 Setup
+  heimdal init  Publish initial metadata into an existing Azure container
   doctor        Check prerequisites for an environment
   doctor terraform
                 Probe explicit Azure Blob backend container metadata
@@ -48,6 +49,31 @@ Start here
 
 Help: bivrost <command> --help  or  bivrost help <command>
 For image access: bivrost acr --help
+`
+	case "heimdal", "heimdal init":
+		return `Publish initial Heimdal metadata into an existing Azure Blob container.
+
+Usage: bivrost heimdal init -e NAME --subscription ID --account NAME [options]
+
+Options
+      --container NAME     Existing container (default: heimdal)
+      --prefix PATH        Blob prefix (default: environments/NAME)
+      --private-host HOST  Exact private route to publish; repeat as needed
+      --valid-for DURATION Metadata lifetime (default: 24h; maximum: 168h)
+  -h, --help               Show this help
+
+Uses your local Azure CLI Entra login to upload a digest-named revision and
+then current.json. Both uploads are create-only: init never replaces an existing
+revision or current pointer. The container and publisher permissions must exist.
+If the second upload fails, an unreferenced revision may remain for an operator
+to inspect; init does not delete blobs. Output includes the source locator.
+
+Inside a Bivrost session, uploads use its configured proxy; configure the metadata
+storage hostname as a private route when needed. Outside a session, normal
+network settings apply. No account, container, roles or public access are created.
+
+This first slice publishes route-only metadata. Automatic session retrieval
+and later revision publication are not implemented yet. No Terraform state is used.
 `
 	case "session", "session publish", "session unpublish", "session path", "session clean":
 		return `Share a Kubernetes session with other local tools, explicitly.

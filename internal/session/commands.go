@@ -83,6 +83,8 @@ func Run(args []string, version string) (resultErr error) {
 	}
 
 	switch command.Kind {
+	case cli.HeimdalInit:
+		return runHeimdalInit(ctx, command, os.Stdout)
 	case cli.SessionPublish:
 		return runSessionPublication(ctx, "publish")
 	case cli.SessionUnpublish:
