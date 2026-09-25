@@ -323,3 +323,44 @@ func TestPublishedKubeconfigUsesAuthenticatedProxyAndOriginalTLSIdentity(t *test
 		t.Fatal("cached client remained connected after unpublish")
 	}
 }
+
+func TestPublicationRejectsChangedTrustConfiguration(t *testing.T) {
+	a, input := publicationFixture(t)
+	for name, change := range map[string]func(map[string]json.RawMessage){
+		"missing CA":       func(c map[string]json.RawMessage) { delete(c, "certificate-authority-data") },
+		"empty CA":         func(c map[string]json.RawMessage) { c["certificate-authority-data"] = json.RawMessage(`""`) },
+		"insecure TLS":     func(c map[string]json.RawMessage) { c["insecure-skip-tls-verify"] = json.RawMessage(`true`) },
+		"invalid TLS flag": func(c map[string]json.RawMessage) { c["insecure-skip-tls-verify"] = json.RawMessage(`"false"`) },
+		"external CA":      func(c map[string]json.RawMessage) { c["certificate-authority"] = json.RawMessage(`"/unexpected/file"`) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			var doc map[string]json.RawMessage
+			json.Unmarshal(input, &doc)
+			outer, c, err := namedKubeObject(doc["clusters"], "cluster", "cluster")
+			if err != nil {
+				t.Fatal(err)
+			}
+			change(c)
+			doc["clusters"], _ = singleNamedSection(outer, "cluster", c)
+			data, _ := json.Marshal(doc)
+			os.WriteFile(a.kubeconfig, data, 0600)
+			if _, err = a.publish(); err == nil {
+				t.Fatal("published unsafe trust configuration")
+			}
+		})
+	}
+}
+
+func TestUnpublishClearsSuspendedIntent(t *testing.T) {
+	a, _ := publicationFixture(t)
+	a.publicationRequested = true
+	a.kubernetesUnavailable = true
+	if !a.wantsPublication() || a.isPublished() {
+		t.Fatal("suspended publication intent lost")
+	}
+	w := httptest.NewRecorder()
+	a.handlePublication(w, httptest.NewRequest("POST", "/unpublish", nil))
+	if w.Code != http.StatusNoContent || a.wantsPublication() {
+		t.Fatal("unpublish failed to clear suspended intent")
+	}
+}

@@ -42,6 +42,7 @@ type acrActivation struct {
 	done                     chan struct{}
 	pending                  *profile.Profile
 	publication              *sessionPublication
+	publicationRequested     bool
 }
 
 func activationShell(shell string) bool {

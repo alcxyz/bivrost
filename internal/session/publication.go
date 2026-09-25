@@ -127,6 +127,7 @@ func (a *acrActivation) publish() (string, error) {
 	}
 	p.path = finalPath
 	a.publication = p
+	a.publicationRequested = true
 	return p.path, nil
 }
 
@@ -161,6 +162,20 @@ func publicationKubeconfig(input []byte, environment, id, target, proxyURL strin
 	tlsName, ok := rawString(cluster["tls-server-name"])
 	if !ok || !validRemoteDNSName(tlsName) {
 		return nil, "", errors.New("publication requires the original Kubernetes TLS identity")
+	}
+	ca, validCA := rawString(cluster["certificate-authority-data"])
+	if !validCA || ca == "" {
+		return nil, "", errors.New("publication requires an embedded cluster certificate authority")
+	}
+	if _, exists := cluster["certificate-authority"]; exists {
+		return nil, "", errors.New("publication must not reference a separate certificate authority file")
+	}
+	if raw, exists := cluster["insecure-skip-tls-verify"]; exists {
+		var insecure bool
+		if json.Unmarshal(raw, &insecure) != nil || insecure {
+			return nil, "", errors.New("publication requires Kubernetes TLS verification")
+		}
+		delete(cluster, "insecure-skip-tls-verify")
 	}
 	// Reuse exec-based identity, never serialize an Azure token or shell environment.
 	var plugin map[string]json.RawMessage
@@ -284,6 +299,12 @@ func (p *sessionPublication) close() {
 		os.Remove(p.path)
 	}
 }
+func (a *acrActivation) wantsPublication() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.publicationRequested
+}
+
 func (a *acrActivation) isPublished() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -306,6 +327,7 @@ func (a *acrActivation) handlePublication(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if r.URL.Path == "/unpublish" {
+		a.publicationRequested = false
 		if a.publication != nil {
 			a.publication.close()
 			a.publication = nil

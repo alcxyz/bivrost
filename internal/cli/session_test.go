@@ -3,6 +3,9 @@ package cli
 import "testing"
 
 func TestSessionCommands(t *testing.T) {
+	if c, err := Parse([]string{"session", "--help"}); err != nil || c.Kind != Help {
+		t.Fatal("missing session help", err)
+	}
 	for action, kind := range map[string]Kind{"publish": SessionPublish, "unpublish": SessionUnpublish, "path": SessionPath, "clean": SessionClean} {
 		got, err := Parse([]string{"session", action})
 		if err != nil || got.Kind != kind {

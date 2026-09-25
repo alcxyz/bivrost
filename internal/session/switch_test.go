@@ -147,20 +147,22 @@ func TestPlatformSwitchCleansUpBeforeOpeningNextTarget(t *testing.T) {
 		wantSessions        int32
 		wantConnectionError bool
 		publish             bool
+		unavailableMiddle   bool
 	}{
 		{name: "accepted exit reconnects", firstShellErr: exitCodeError(SwitchShellExitCode), wantSessions: 2},
 		{name: "next setup failure returns", firstShellErr: exitCodeError(SwitchShellExitCode), failNextConnection: true, wantSessions: 2, wantConnectionError: true},
 		{name: "ordinary exit ignores pending target", wantSessions: 1},
 		{name: "publication follows switch with new path", firstShellErr: exitCodeError(SwitchShellExitCode), wantSessions: 2, publish: true},
+		{name: "publication resumes after unavailable intermediate target", firstShellErr: exitCodeError(SwitchShellExitCode), wantSessions: 3, publish: true, unavailableMiddle: true},
 		{name: "publication removed on failed reconnect", firstShellErr: exitCodeError(SwitchShellExitCode), failNextConnection: true, wantSessions: 2, wantConnectionError: true, publish: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			testPlatformSwitchLifecycle(t, test.firstShellErr, test.failNextConnection, test.wantSessions, test.wantConnectionError, test.publish)
+			testPlatformSwitchLifecycle(t, test.firstShellErr, test.failNextConnection, test.wantSessions, test.wantConnectionError, test.publish, test.unavailableMiddle)
 		})
 	}
 }
 
-func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConnection bool, wantSessions int32, wantConnectionError bool, publish bool) {
+func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConnection bool, wantSessions int32, wantConnectionError bool, publish bool, unavailableMiddle bool) {
 	t.Helper()
 	t.Setenv("BIVROST_UPSTREAM_PROXY", "")
 	t.Setenv("BIVROST_ACR_UPSTREAM_PROXY", "")
@@ -230,6 +232,9 @@ func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConn
 			if !publish {
 				t.Fatal("prepareKubeconfig called without AKS")
 			}
+			if unavailableMiddle && session.Load() == 2 {
+				return kubeTarget{}, &kubeUnavailableError{reason: kubeUnavailableAKSCredentials}
+			}
 			path := filepath.Join(dir, "kubeconfig")
 			err := os.WriteFile(path, publicationInput, 0600)
 			return kubeTarget{path: path, host: "cluster.example.test", port: "443"}, err
@@ -253,9 +258,9 @@ func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConn
 		done := make(chan struct{})
 		var once sync.Once
 		stop := func() { once.Do(func() { close(done) }) }
-		if current == 1 {
+		if current == 1 || (unavailableMiddle && current == 2) {
 			control := readActivationControl(t, shellinit.EnvironmentValue(env, "BIVROST_CONTROL_FILE"))
-			if publish {
+			if publish && current == 1 {
 				firstPublication = publicationControlPath(t, control, "/publish")
 			}
 			body, _ := json.Marshal(switchRequest{ConfigPath: targetPath})
@@ -265,7 +270,7 @@ func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConn
 			if response.StatusCode != http.StatusAccepted {
 				t.Fatalf("switch status = %d, want %d", response.StatusCode, http.StatusAccepted)
 			}
-			if session.Load() != 1 {
+			if session.Load() != current {
 				t.Fatal("accepted request changed target before the shell exited")
 			}
 			close(done)

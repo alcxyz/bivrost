@@ -222,6 +222,7 @@ func platformConnectWithPublication(ctx context.Context, c profile.Profile, shel
 	shellEnv := platformEnvironment(services.environ(), c.ProxyURL(), kubeconfigPath)
 	activation := newACRActivation(ctx, c, services, bastion.directory, shellName)
 	activation.kubeconfig = kubeconfigPath
+	activation.publicationRequested = resumePublication
 	activation.kubernetesUnavailable = kubeUnavailable != nil
 	defer activation.close()
 	if c.ACRSession {
@@ -298,7 +299,7 @@ func platformConnectWithPublication(ctx context.Context, c profile.Profile, shel
 		err := shell.err()
 		if isSwitchShellExit(err) {
 			if target, ok := activation.pendingSwitch(); ok {
-				return &switchReconnectError{config: target, published: activation.isPublished()}
+				return &switchReconnectError{config: target, published: activation.wantsPublication()}
 			}
 		}
 		if err != nil {
