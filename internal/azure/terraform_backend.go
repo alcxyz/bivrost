@@ -14,10 +14,52 @@ import (
 )
 
 const (
-	terraformCloudTimeout = 10 * time.Second
-	terraformProbeTimeout = 30 * time.Second
-	maxCloudSuffixOutput  = 256
+	terraformCloudTimeout        = 10 * time.Second
+	terraformProbeTimeout        = 30 * time.Second
+	maxCloudSuffixOutput         = 256
+	maxTerraformProbeErrorOutput = 8 * 1024
 )
+
+const genericTerraformProbeGuidance = "the named container properties could not be verified; check Azure login, container metadata read permission, target names, active cloud, and network connectivity"
+
+type terraformProbeFailure uint8
+
+const (
+	terraformProbeFailureUnknown terraformProbeFailure = iota
+	terraformProbeFailureCLIUnavailable
+	terraformProbeFailureTimeout
+	terraformProbeFailureLogin
+	terraformProbeFailureNetwork
+)
+
+type terraformProbeError struct {
+	failure terraformProbeFailure
+}
+
+func (e *terraformProbeError) Error() string {
+	return TerraformProbeGuidance(e)
+}
+
+// TerraformProbeGuidance returns fixed guidance for a backend probe error. It
+// never includes subprocess output or the text of an arbitrary error.
+func TerraformProbeGuidance(err error) string {
+	var probeError *terraformProbeError
+	if !errors.As(err, &probeError) {
+		return genericTerraformProbeGuidance
+	}
+	switch probeError.failure {
+	case terraformProbeFailureCLIUnavailable:
+		return "Azure CLI is unavailable; install it, then retry"
+	case terraformProbeFailureTimeout:
+		return "the metadata request timed out; check the network path and retry"
+	case terraformProbeFailureLogin:
+		return "Azure CLI login is required; run bivrost login or az login, then retry"
+	case terraformProbeFailureNetwork:
+		return "a network request failed while checking backend metadata; check connectivity, proxy settings, and the private route, then retry"
+	default:
+		return genericTerraformProbeGuidance
+	}
+}
 
 var (
 	storageAccountPattern = regexp.MustCompile(`^[a-z0-9]{3,24}$`)
@@ -158,26 +200,55 @@ func ProbeTerraformBackend(ctx context.Context, target TerraformBackend, endpoin
 	defer cancel()
 	cmd, err := Command(probeCtx, TerraformBackendProbeArguments(target, endpoint)...)
 	if err != nil {
-		return errors.New("cannot run Azure CLI; install it, then retry")
+		return &terraformProbeError{failure: terraformProbeFailureCLIUnavailable}
 	}
+	var stderr boundedBuffer
+	stderr.limit = maxTerraformProbeErrorOutput
 	cmd.Env = withoutStorageCredentials(environment)
 	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
+	cmd.Stderr = &stderr
 	cmd.WaitDelay = subscriptionWaitDelay
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		if errors.Is(probeCtx.Err(), context.DeadlineExceeded) {
-			return errors.New("Terraform backend metadata probe timed out; check the network path and retry")
+			return &terraformProbeError{failure: terraformProbeFailureTimeout}
 		}
 		var executableError *exec.Error
 		if errors.As(err, &executableError) {
-			return errors.New("cannot run Azure CLI; install it, then retry")
+			return &terraformProbeError{failure: terraformProbeFailureCLIUnavailable}
 		}
-		return errors.New("Terraform backend container metadata could not be verified; check Azure login, data-plane access, target names, active cloud, and network connectivity")
+		return &terraformProbeError{failure: classifyTerraformProbeStderr(stderr.data.Bytes(), stderr.exceeded)}
 	}
 	return nil
+}
+
+func classifyTerraformProbeStderr(stderr []byte, truncated bool) terraformProbeFailure {
+	if truncated {
+		return terraformProbeFailureUnknown
+	}
+	// Azure CLI owns this exact login message:
+	// https://github.com/Azure/azure-cli/blob/dev/src/azure-cli-core/azure/cli/core/_profile.py
+	if bytes.Contains(stderr, []byte("Please run 'az login' to setup account.")) {
+		return terraformProbeFailureLogin
+	}
+	// Azure Core defines ServiceRequestError as a failure before a request reaches
+	// the service; Azure CLI reports the qualified requests/urllib3 network types:
+	// https://github.com/Azure/azure-sdk-for-python/blob/main/sdk/core/azure-core/README.md#azure-core-library-exceptions
+	// https://github.com/Azure/azure-cli/issues/33691
+	for _, token := range [][]byte{
+		[]byte("azure.core.exceptions.ServiceRequestError:"),
+		[]byte("urllib3.exceptions.NameResolutionError:"),
+		[]byte("urllib3.exceptions.NewConnectionError:"),
+		[]byte("urllib3.exceptions.ProxyError:"),
+		[]byte("requests.exceptions.ConnectionError:"),
+	} {
+		if bytes.Contains(stderr, token) {
+			return terraformProbeFailureNetwork
+		}
+	}
+	return terraformProbeFailureUnknown
 }
 
 func validTerraformBlobEndpoint(account, endpoint string) bool {

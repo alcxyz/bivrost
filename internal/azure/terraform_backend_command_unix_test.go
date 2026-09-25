@@ -92,3 +92,84 @@ func TestTerraformBackendProbeRejectsUnsupportedCloudAndHidesSubprocessErrors(t 
 		t.Fatalf("ProbeTerraformBackend() exposed subprocess error: %v", err)
 	}
 }
+
+func TestTerraformBackendProbeClassifiesOnlyBoundedAllowlistedStderr(t *testing.T) {
+	directory := t.TempDir()
+	azPath := filepath.Join(directory, "az")
+	t.Setenv("PATH", directory)
+	target := TerraformBackend{Subscription: "sub", Account: "examplestate", Container: "tfstate"}
+	endpoint := "https://examplestate.blob.core.windows.net"
+	longOutput := strings.Repeat("x", maxTerraformProbeErrorOutput+1)
+	tests := []struct {
+		name        string
+		script      string
+		want        string
+		wantNoError bool
+	}{
+		{
+			name:   "login",
+			script: "#!/bin/sh\nprintf '%s\\n' \"ERROR: Please run 'az login' to setup account.\" >&2\nexit 1\n",
+			want:   "Azure CLI login is required; run bivrost login or az login, then retry",
+		},
+		{
+			name:   "network",
+			script: "#!/bin/sh\nprintf '%s\\n' 'azure.core.exceptions.ServiceRequestError: PRIVATE-ERROR-MARKER' >&2\nexit 1\n",
+			want:   "a network request failed while checking backend metadata; check connectivity, proxy settings, and the private route, then retry",
+		},
+		{
+			name:   "ambiguous 403",
+			script: "#!/bin/sh\nprintf '%s\\n' 'ERROR: (403) Forbidden AuthorizationFailure PRIVATE-ERROR-MARKER' >&2\nexit 1\n",
+			want:   genericTerraformProbeGuidance,
+		},
+		{
+			name:   "unknown",
+			script: "#!/bin/sh\nprintf '%s\\n' 'PRIVATE-ERROR-MARKER' >&2\nexit 1\n",
+			want:   genericTerraformProbeGuidance,
+		},
+		{
+			name:   "truncated login",
+			script: "#!/bin/sh\nprintf '%s\\n' \"ERROR: Please run 'az login' to setup account. " + longOutput + "\" >&2\nexit 1\n",
+			want:   genericTerraformProbeGuidance,
+		},
+		{
+			name:        "large successful stderr",
+			script:      "#!/bin/sh\nprintf '%s\\n' '" + longOutput + "' >&2\nexit 0\n",
+			wantNoError: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := os.WriteFile(azPath, []byte(test.script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			err := ProbeTerraformBackend(context.Background(), target, endpoint, os.Environ())
+			if test.wantNoError {
+				if err != nil {
+					t.Fatalf("ProbeTerraformBackend() error = %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("ProbeTerraformBackend() unexpectedly succeeded")
+			}
+			if got := TerraformProbeGuidance(err); got != test.want {
+				t.Errorf("TerraformProbeGuidance() = %q, want %q", got, test.want)
+			}
+			if strings.Contains(err.Error(), "PRIVATE-ERROR-MARKER") || strings.Contains(TerraformProbeGuidance(err), "PRIVATE-ERROR-MARKER") {
+				t.Error("probe exposed subprocess stderr")
+			}
+		})
+	}
+}
+
+func TestTerraformBackendProbeClassifiesMissingAzureCLI(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	target := TerraformBackend{Subscription: "sub", Account: "examplestate", Container: "tfstate"}
+	err := ProbeTerraformBackend(context.Background(), target, "https://examplestate.blob.core.windows.net", os.Environ())
+	if err == nil {
+		t.Fatal("ProbeTerraformBackend() unexpectedly succeeded")
+	}
+	if got, want := TerraformProbeGuidance(err), "Azure CLI is unavailable; install it, then retry"; got != want {
+		t.Errorf("TerraformProbeGuidance() = %q, want %q", got, want)
+	}
+}

@@ -200,6 +200,8 @@ Inside an authenticated Bivrost session, the probe is forced through that
 session's proxy and reports whether the endpoint has an exact private route.
 Outside a session, ambient network and proxy settings apply. A failed probe does
 not by itself distinguish login, authorization, target, or network failures.
+If a private route is missing, the diagnostic shows the exact --private-host
+option to add to your original connection command before reconnecting.
 
 Required target
       --subscription NAME_OR_ID  Project-owned backend subscription
