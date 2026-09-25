@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/alcxyz/bivrost/internal/azure"
 	profile "github.com/alcxyz/bivrost/internal/config"
 )
 
@@ -29,6 +30,7 @@ const (
 	ACRDoctor
 	Login
 	Doctor
+	TerraformDoctor
 	SessionPublish
 	SessionUnpublish
 	SessionPath
@@ -46,6 +48,9 @@ type Command struct {
 	Tenant       string
 	Debug        bool
 	Refresh      bool
+	Subscription string
+	Account      string
+	Container    string
 	HelpTopic    string
 }
 
@@ -66,6 +71,9 @@ func Parse(args []string) (Command, error) {
 	}
 	if len(args) == 3 && args[0] == "config" && args[1] == "init" && (args[2] == "--help" || args[2] == "-h") {
 		return Command{Kind: Help, HelpTopic: "config init"}, nil
+	}
+	if len(args) == 3 && args[0] == "doctor" && args[1] == "terraform" && (args[2] == "--help" || args[2] == "-h") {
+		return Command{Kind: Help, HelpTopic: "doctor terraform"}, nil
 	}
 
 	if len(args) == 0 || (len(args) == 1 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h")) {
@@ -112,6 +120,9 @@ func Parse(args []string) (Command, error) {
 		}
 		return Command{Kind: kind}, nil
 	case "doctor":
+		if len(args) >= 2 && args[1] == "terraform" {
+			return parseTerraformDoctorCommand(args[2:])
+		}
 		return parseConnectionCommand(Doctor, "doctor", args[1:], false)
 	case "switch":
 		return parseConnectionCommand(Switch, "switch", args[1:], false)
@@ -152,6 +163,36 @@ func Parse(args []string) (Command, error) {
 	default:
 		return Command{}, fmt.Errorf("unknown command %q; use bivrost help", args[0])
 	}
+}
+
+func parseTerraformDoctorCommand(args []string) (Command, error) {
+	flags := flag.NewFlagSet("doctor terraform", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	subscription := flags.String("subscription", "", "Azure subscription name or ID")
+	account := flags.String("account", "", "Azure storage account name")
+	container := flags.String("container", "", "Azure Blob container name")
+	debug := flags.Bool("debug", false, "write a bounded local diagnostic log")
+	flags.BoolVar(debug, "d", false, "write a bounded local diagnostic log")
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return Command{Kind: Help, HelpTopic: "doctor terraform"}, nil
+		}
+		return Command{}, fmt.Errorf("invalid doctor terraform options: %w", err)
+	}
+	if flags.NArg() != 0 {
+		return Command{}, errors.New("doctor terraform does not accept positional arguments")
+	}
+	target := azure.TerraformBackend{Subscription: *subscription, Account: *account, Container: *container}
+	if err := azure.ValidateTerraformBackend(target); err != nil {
+		return Command{}, err
+	}
+	return Command{
+		Kind:         TerraformDoctor,
+		Subscription: target.Subscription,
+		Account:      target.Account,
+		Container:    target.Container,
+		Debug:        *debug,
+	}, nil
 }
 
 func parseSubscriptionsCommand(args []string) (Command, error) {

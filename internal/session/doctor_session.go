@@ -23,6 +23,7 @@ type doctorSessionStatus struct {
 	KubernetesUnavailable bool
 	Kubeconfig            string
 	Config                profile.Profile
+	ProfileEnvironment    string
 	Enabled               bool
 	LoginRefreshed        bool
 	Machine               bool

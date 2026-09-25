@@ -218,7 +218,7 @@ func (a *acrActivation) listen(env []string) ([]string, error) {
 		if r.URL.Path == "/status" {
 			a.mu.Lock()
 			defer a.mu.Unlock()
-			state := doctorSessionStatus{Config: a.config, Kubeconfig: a.kubeconfig, KubernetesUnavailable: a.kubernetesUnavailable}
+			state := doctorSessionStatus{Config: a.config, ProfileEnvironment: a.config.Environment, Kubeconfig: a.kubeconfig, KubernetesUnavailable: a.kubernetesUnavailable}
 			if a.ctx.Err() != nil {
 				http.Error(w, "session ended", http.StatusGone)
 				return

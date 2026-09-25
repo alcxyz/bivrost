@@ -21,6 +21,8 @@ func TestContextualHelpRouting(t *testing.T) {
 		{[]string{"list", "--help"}, "list"},
 		{[]string{"list", "subscriptions", "--help"}, "list subscriptions"},
 		{[]string{"help", "list", "subscriptions"}, "list subscriptions"},
+		{[]string{"doctor", "terraform", "--help"}, "doctor terraform"},
+		{[]string{"help", "doctor", "terraform"}, "doctor terraform"},
 		{[]string{"environments", "--help"}, "list"},
 		{[]string{"env", "--help"}, "list"},
 		{[]string{"help", "envs"}, "list"},
@@ -39,6 +41,20 @@ func TestContextualHelpRouting(t *testing.T) {
 	}
 	if strings.Contains(HelpText("connect"), "--engine") || strings.Contains(HelpText("acr login"), "--no-login") {
 		t.Fatal("command help advertises unsupported options")
+	}
+}
+
+func TestTerraformDoctorHelpStatesExplicitReadOnlyBoundary(t *testing.T) {
+	t.Parallel()
+	text := HelpText("doctor terraform")
+	for _, want := range []string{
+		"--subscription NAME_OR_ID", "--account NAME", "--container NAME",
+		"Microsoft Entra login", "does not select a subscription globally",
+		"list or read blobs", "acquire a state lock", "ambient network and proxy settings",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("Terraform doctor help missing %q", want)
+		}
 	}
 }
 

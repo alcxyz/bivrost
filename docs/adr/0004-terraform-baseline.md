@@ -2,7 +2,7 @@
 
 - Status: Accepted; baseline implementation on `dev`
 - Date: 2026-09-20
-- Scope: Incremental implementation on `dev`; backend diagnostics remain future work.
+- Scope: Incremental implementation on `dev`; explicit backend metadata diagnostics implemented.
 
 ## Context
 
@@ -58,9 +58,29 @@ failures remain fatal. The configured Kubernetes target is retained for a
 fresh attempt on reconnect; `doctor` reports the unavailable capability without
 probing an ambient context. Shared transport failures still end the session.
 
-Backend discovery/diagnostics and a generic command-execution lifecycle remain
-future slices. None requires Heimdal; later runtime metadata can supply the
-same connection profile inputs.
+`bivrost doctor terraform` accepts an explicit subscription, storage account
+and container. It derives the Blob endpoint from the active supported Azure CLI
+cloud and uses `az storage container show --auth-mode login` with suppressed
+output. Microsoft documents this command as returning the named container's
+system properties and user-defined metadata without its blob list, and documents
+`login` mode as Microsoft Entra authorization rather than storage-key fallback:
+[Get Container Properties](https://learn.microsoft.com/rest/api/storageservices/get-container-properties),
+[Azure CLI data authorization](https://learn.microsoft.com/azure/storage/blobs/authorize-data-operations-cli).
+The diagnostic strips storage key, SAS, connection-string and endpoint
+environment variables before invoking Azure CLI. It does not require Terraform,
+select a global subscription, set provider variables, enumerate or read blobs,
+download state, run init, or acquire a state lock.
+
+Inside a Bivrost session, the diagnostic authenticates the active controller
+status and forces the Azure command through that session's proxy. It reports
+whether the cloud-derived endpoint has an exact private route. Outside a session,
+ambient network and proxy settings remain visible as an unverified route. A
+failed container-properties request reports possible login, data-plane access,
+target, cloud and network causes without guessing which caused an Azure 403.
+
+Generic command-execution lifecycle remains a future slice. Backend discovery
+beyond the explicit diagnostic is also deferred. Neither requires Heimdal;
+later runtime metadata can supply the same connection profile inputs.
 
 ## Alternatives considered
 
