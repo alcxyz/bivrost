@@ -11,6 +11,7 @@ import (
 
 	"github.com/alcxyz/bivrost/internal/azure"
 	"github.com/alcxyz/bivrost/internal/cli"
+	profile "github.com/alcxyz/bivrost/internal/config"
 	"github.com/alcxyz/bivrost/internal/diagnostics"
 )
 
@@ -67,7 +68,7 @@ func runTerraformDoctor(ctx context.Context, command cli.Command, out io.Writer)
 		fmt.Fprintln(out, "[NOT VERIFIED] Terraform backend routing configuration: the authenticated active Bivrost session proxy will be used, but this endpoint is not an exact private route and follows the session's ambient route")
 	}
 	if session == nil || !containsExactHost(session.Config.PrivateHosts, host) {
-		writeTerraformRouteHint(out, host, session != nil)
+		writeTerraformRouteHint(out, host, session, os.Getenv("BIVROST_SWITCH_ALLOWED") == "1")
 	}
 
 	if err := azure.ProbeTerraformBackend(ctx, target, endpoint, environment); err != nil {
@@ -82,12 +83,29 @@ func runTerraformDoctor(ctx context.Context, command cli.Command, out io.Writer)
 	return nil
 }
 
-// Keep the original target and other connection options: reconstructing a full
-// command from session status could lose a custom profile or temporary routes.
-func writeTerraformRouteHint(out io.Writer, host string, connected bool) {
+// Custom profile paths and deliberately skipped registry login cannot be
+// reconstructed as a named-environment switch. Keep their original options.
+func writeTerraformRouteHint(out io.Writer, host string, session *doctorSessionStatus, switchAllowed bool) {
+	if session != nil && switchAllowed && profile.ValidEnvironmentName(session.ProfileEnvironment) &&
+		session.ProfileEnvironment != "custom-profile" && !(session.Enabled && !session.LoginRefreshed) {
+		args := []string{"bivrost", "switch", "-e", session.ProfileEnvironment}
+		for _, existing := range session.Config.PrivateHosts {
+			args = append(args, "--private-host", existing)
+		}
+		if !containsExactHost(session.Config.PrivateHosts, host) {
+			args = append(args, "--private-host", host)
+		}
+		if session.Enabled {
+			args = append(args, "--acr")
+		}
+		fmt.Fprintln(out, "If this backend requires private access, reconnect this session with:")
+		fmt.Fprintln(out, "  "+strings.Join(args, " "))
+		fmt.Fprintln(out, "This closes the current shell and reconnects; existing private routes and enabled ACR access are included. Then repeat this diagnostic.")
+		return
+	}
 	fmt.Fprintln(out, "If this backend requires private access, add this option to your original bivrost connect command:")
 	fmt.Fprintf(out, "  --private-host %s\n", host)
-	if connected {
+	if session != nil {
 		fmt.Fprintln(out, "Exit this shell first, then reconnect with the added option and repeat this diagnostic.")
 	} else {
 		fmt.Fprintln(out, "Connect with that option, then repeat this diagnostic inside the new shell.")

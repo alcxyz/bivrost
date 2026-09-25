@@ -77,8 +77,11 @@ whether the cloud-derived endpoint has an exact private route. Outside a session
 ambient network and proxy settings remain visible as an unverified route. A
 failed container-properties request reports possible login, data-plane access,
 target, cloud and network causes without guessing which caused an Azure 403.
-Missing private routes produce an exact `--private-host` option to add to the
-original connection command; the diagnostic does not modify routes or assume
+Missing private routes produce a `bivrost switch` suggestion in supported
+named-environment sessions, including existing private routes and enabled ACR.
+When the original target or login options cannot be reconstructed safely, the
+hint supplies an exact `--private-host` option for the original connection
+command instead. The diagnostic does not modify routes or assume
 that every backend requires private routing. Runtime route distribution remains
 part of Heimdal, not a new local catalogue requirement.
 
