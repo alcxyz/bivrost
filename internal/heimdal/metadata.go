@@ -17,6 +17,7 @@ import (
 )
 
 const MaxDocumentSize = 64 * 1024
+const MaxPointerSize = 4 * 1024
 const DefaultValidity = 24 * time.Hour
 const MaxValidity = 7 * 24 * time.Hour
 
@@ -84,6 +85,65 @@ func Create(environment string, hosts []string, now time.Time, validity time.Dur
 	return data, append(pointer, '\n'), revision, nil
 }
 
+// DecodePointer validates the exact schema used to locate an immutable revision.
+func DecodePointer(data []byte, environment string) (Pointer, error) {
+	var pointer Pointer
+	if len(data) > MaxPointerSize {
+		return pointer, errors.New("Heimdal pointer exceeds size limit")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return pointer, errors.New("invalid Heimdal pointer")
+	}
+	var schemaVersion, pointerEnvironment, revision bool
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return Pointer{}, errors.New("invalid Heimdal pointer")
+		}
+		name, ok := token.(string)
+		if !ok {
+			return Pointer{}, errors.New("invalid Heimdal pointer")
+		}
+		switch name {
+		case "schema_version":
+			if schemaVersion || decodeNonNull(decoder, &pointer.SchemaVersion) != nil {
+				return Pointer{}, errors.New("invalid Heimdal pointer")
+			}
+			schemaVersion = true
+		case "environment":
+			if pointerEnvironment || decodeNonNull(decoder, &pointer.Environment) != nil {
+				return Pointer{}, errors.New("invalid Heimdal pointer")
+			}
+			pointerEnvironment = true
+		case "revision":
+			if revision || decodeNonNull(decoder, &pointer.Revision) != nil {
+				return Pointer{}, errors.New("invalid Heimdal pointer")
+			}
+			revision = true
+		default:
+			return Pointer{}, errors.New("invalid Heimdal pointer")
+		}
+	}
+	if token, err = decoder.Token(); err != nil || token != json.Delim('}') {
+		return Pointer{}, errors.New("invalid Heimdal pointer")
+	}
+	if !schemaVersion || !pointerEnvironment || !revision || !atEOF(decoder) {
+		return Pointer{}, errors.New("invalid Heimdal pointer")
+	}
+	if pointer.SchemaVersion != 1 {
+		return Pointer{}, errors.New("unsupported Heimdal pointer schema version")
+	}
+	if !profile.ValidEnvironmentName(environment) || pointer.Environment != environment {
+		return Pointer{}, errors.New("Heimdal pointer environment does not match the requested environment")
+	}
+	if !validRevision(pointer.Revision) {
+		return Pointer{}, errors.New("invalid Heimdal pointer revision")
+	}
+	return pointer, nil
+}
+
 func (d Document) Validate(environment string, now time.Time) error {
 	if d.SchemaVersion != 1 {
 		return errors.New("unsupported Heimdal schema version")
@@ -111,16 +171,89 @@ func Decode(data []byte, environment, revision string, now time.Time) (Document,
 		return d, errors.New("Heimdal metadata revision does not match its contents")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&d); err != nil {
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
 		return Document{}, errors.New("invalid Heimdal metadata document")
 	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
+	var schemaVersion, documentEnvironment, issuedAt, expiresAt, privateHosts bool
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return Document{}, errors.New("invalid Heimdal metadata document")
+		}
+		name, ok := token.(string)
+		if !ok {
+			return Document{}, errors.New("invalid Heimdal metadata document")
+		}
+		switch name {
+		case "schema_version":
+			if schemaVersion || decodeNonNull(decoder, &d.SchemaVersion) != nil {
+				return Document{}, errors.New("invalid Heimdal metadata document")
+			}
+			schemaVersion = true
+		case "environment":
+			if documentEnvironment || decodeNonNull(decoder, &d.Environment) != nil {
+				return Document{}, errors.New("invalid Heimdal metadata document")
+			}
+			documentEnvironment = true
+		case "issued_at":
+			if issuedAt || decodeNonNull(decoder, &d.IssuedAt) != nil {
+				return Document{}, errors.New("invalid Heimdal metadata document")
+			}
+			issuedAt = true
+		case "expires_at":
+			if expiresAt || decodeNonNull(decoder, &d.ExpiresAt) != nil {
+				return Document{}, errors.New("invalid Heimdal metadata document")
+			}
+			expiresAt = true
+		case "private_hosts":
+			if privateHosts || decodeNonNull(decoder, &d.PrivateHosts) != nil {
+				return Document{}, errors.New("invalid Heimdal metadata document")
+			}
+			privateHosts = true
+		default:
+			return Document{}, errors.New("invalid Heimdal metadata document")
+		}
+	}
+	if token, err = decoder.Token(); err != nil || token != json.Delim('}') {
+		return Document{}, errors.New("invalid Heimdal metadata document")
+	}
+	if !schemaVersion || !documentEnvironment || !issuedAt || !expiresAt || !privateHosts {
+		return Document{}, errors.New("invalid Heimdal metadata document")
+	}
+	if !atEOF(decoder) {
 		return Document{}, errors.New("unexpected data after Heimdal metadata")
 	}
 	if err := d.Validate(environment, now); err != nil {
 		return Document{}, err
 	}
 	return d, nil
+}
+
+func decodeNonNull(decoder *json.Decoder, target any) error {
+	var raw json.RawMessage
+	if err := decoder.Decode(&raw); err != nil {
+		return err
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return errors.New("required field is null")
+	}
+	return json.Unmarshal(raw, target)
+}
+
+func atEOF(decoder *json.Decoder) bool {
+	var extra json.RawMessage
+	return decoder.Decode(&extra) == io.EOF
+}
+
+func validRevision(revision string) bool {
+	if len(revision) != sha256.Size*2 {
+		return false
+	}
+	for _, c := range revision {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }

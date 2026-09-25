@@ -8,9 +8,9 @@ Use a trusted workstation or isolated CI execution environment. Ordinary
 loopback tunnels do not isolate other local users or workloads; see
 [security boundaries](security-boundaries.md).
 
-**Implementation status:** `heimdal init` is under development for first-time
-publication to an existing container. Runtime retrieval, ongoing publication
-and rollback, and Bivrost-managed PIM activation are planned features. Activate
+**Implementation status:** the development branch supports `heimdal init` for
+first-time publication and opt-in retrieval during connect/reconnect. Ongoing
+publication and rollback, and Bivrost-managed PIM activation are planned features. Activate
 PIM through the provider's own interface today; Bivrost has no `pim` command.
 
 ## Storage and ownership
@@ -117,16 +117,20 @@ provide a partial path condition that could be mistaken for complete isolation.
    publishing credentials. Anyone who can change or execute the privileged
    publishing workflow is effectively a publisher; protect that workflow and
    its dependencies accordingly.
-4. **Consume metadata per session (planned).** Connect using bootstrap settings,
+4. **Consume metadata per session (development).** Connect using bootstrap settings,
    retrieve and validate the metadata, and keep it only for the session.
    Reading metadata does not grant access to the resources it describes.
    Explicit local fallback remains subject to those resources' authorization.
+   A configured source failure stops setup unless `allow_local_fallback` is
+   explicitly enabled. Even then, permission and validation failures remain
+   visible, and only existing local routes are used. See the
+   [connection profile example](../README.md#fetch-metadata-when-connecting-development).
 5. **Maintain through reviewed CI (planned publication lifecycle).** Keep the
    authoritative deployment metadata in the adopter's own repository. Validate
    changes before publishing an immutable revision and updating its pointer.
    Current initialization is create-only and is not a repeatable update command.
    Revision names are content digests, not Azure immutability policies. The
-   metadata decoder verifies the digest, but runtime retrieval is still planned.
+   startup metadata reader verifies the digest before applying routes.
    A publisher can delete revisions or select different content through a new
    pointer. Choose retention/versioning and audit logging appropriate to your
    recovery needs; neither a digest nor versioning prevents a malicious publisher

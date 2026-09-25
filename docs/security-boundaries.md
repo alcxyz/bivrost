@@ -51,8 +51,8 @@ They do not authenticate the publisher independently of the configured storage
 source. Storage retention/versioning is a separate deployment choice.
 
 Private-host metadata selects a network route, not a replacement TLS identity
-or token audience. Clients must preserve TLS verification. Runtime metadata
-consumption is not implemented yet; trust constraints and failure behavior
-must be tested before enabling it. Metadata must never become executable hooks
+or token audience. Clients must preserve TLS verification. Opt-in startup
+retrieval validates source, schema, digest and expiry before installing routes;
+it does not refresh an active shell. Metadata must never become executable hooks
 or grant provider permissions. See the [adoption example](heimdal-adoption.md)
 for deployment permission boundaries.

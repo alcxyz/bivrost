@@ -61,6 +61,6 @@ func runHeimdalInit(ctx context.Context, command cli.Command, out io.Writer) err
 	fmt.Fprintln(out, "Heimdal initial metadata published.")
 	fmt.Fprintf(out, "Source: %s/%s/%s/current.json\n", endpoint, command.Container, command.MetadataPrefix)
 	fmt.Fprintf(out, "Revision: %s\n", revision)
-	fmt.Fprintln(out, "Automatic session retrieval is not implemented yet; retain this source locator for bootstrap configuration.")
+	fmt.Fprintln(out, "Configure the profile's heimdal source to fetch this metadata on connect; init does not change local profiles.")
 	return nil
 }

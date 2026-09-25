@@ -51,6 +51,7 @@ type platformServices struct {
 	startPodman       func(context.Context, profile.Profile, string) (*podmanSession, error)
 	loginPodman       func(context.Context, profile.Profile, *podmanSession) error
 	checkRegistry     func(context.Context, profile.Profile) error
+	fetchHeimdal      func(context.Context, profile.Profile) ([]string, error)
 	environ           func() []string
 	selectShell       func() (string, []string, error)
 	reservePort       func(int) (net.Listener, error)
@@ -215,6 +216,37 @@ func platformConnectWithPublication(ctx context.Context, c profile.Profile, shel
 
 	finishForward(nil)
 	diagnostics.Event(ctx, diagnostics.EventForwardReady)
+	if c.Heimdal != nil {
+		if services.fetchHeimdal == nil {
+			return errors.New("Heimdal reader is unavailable")
+		}
+		fmt.Printf("Fetching Heimdal metadata for %s from %s/%s/%s...\n", c.Heimdal.Environment, c.Heimdal.Account, c.Heimdal.ContainerName(), c.Heimdal.BlobPrefix())
+		hosts, fetchErr := services.fetchHeimdal(ctx, c)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if fetchErr != nil {
+			if !c.Heimdal.AllowLocalFallback {
+				return fmt.Errorf("Heimdal metadata required: %w", fetchErr)
+			}
+			fmt.Fprintf(os.Stderr, "Heimdal refresh failed: %v. Using explicitly allowed local configuration only; remote metadata routes are unavailable.\n", fetchErr)
+		} else {
+			updated, err := withPrivateHosts(c, hosts)
+			if err != nil {
+				return errors.New("Heimdal supplied invalid private routes")
+			}
+			// Replace the bootstrap router before starting any user shell, registry
+			// activation or controller. Never mutate an active session's routes.
+			proxy.close()
+			proxy, err = services.startProxy(ctx, updated)
+			if err != nil {
+				return errors.New("could not start the validated Heimdal session proxy")
+			}
+			defer proxy.close()
+			c = updated
+			fmt.Println("Heimdal metadata validated; private routes are ready for this session.")
+		}
+	}
 	shellName, shellArgs, err := services.selectShell()
 	if err != nil {
 		return err
@@ -337,6 +369,7 @@ func defaultPlatformServices() platformServices {
 		startPodman:   startPodmanSession,
 		loginPodman:   loginPodmanSession,
 		checkRegistry: registryCheck,
+		fetchHeimdal:  fetchHeimdalRoutes,
 		environ:       os.Environ,
 		selectShell:   nativeShell,
 		reservePort: func(port int) (net.Listener, error) {
