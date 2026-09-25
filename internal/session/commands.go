@@ -82,6 +82,16 @@ func Run(args []string, version string) (resultErr error) {
 		}()
 	}
 
+	switch command.Kind {
+	case cli.SessionPublish:
+		return runSessionPublication(ctx, "publish")
+	case cli.SessionUnpublish:
+		return runSessionPublication(ctx, "unpublish")
+	case cli.SessionPath:
+		return runSessionPublication(ctx, "path")
+	case cli.SessionClean:
+		return cleanPublications(ctx)
+	}
 	if command.Kind == cli.Switch {
 		return runSwitch(ctx, command)
 	}

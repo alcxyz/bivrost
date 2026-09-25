@@ -17,3 +17,4 @@ described work already exists.
 | [0009](0009-cloud-provider-boundaries.md) | Incremental cloud provider boundaries | Accepted |
 | [0010](0010-managed-session-switch.md) | Managed session switching | Accepted |
 | [0011](0011-go-package-layout.md) | Go package boundaries and command entry point | Accepted |
+| [0012](0012-opt-in-session-publication.md) | Opt-in Kubernetes session publication | Accepted |

@@ -29,6 +29,10 @@ const (
 	ACRDoctor
 	Login
 	Doctor
+	SessionPublish
+	SessionUnpublish
+	SessionPath
+	SessionClean
 )
 
 type Command struct {
@@ -95,6 +99,18 @@ func Parse(args []string) (Command, error) {
 			return Command{}, errors.New("version does not accept arguments")
 		}
 		return Command{Kind: Version}, nil
+	case "session":
+		if len(args) == 1 {
+			return Command{Kind: Help, HelpTopic: "session"}, nil
+		}
+		if len(args) == 3 && (args[2] == "--help" || args[2] == "-h") && HelpText("session "+args[1]) != "" {
+			return Command{Kind: Help, HelpTopic: "session " + args[1]}, nil
+		}
+		kind, ok := map[string]Kind{"publish": SessionPublish, "unpublish": SessionUnpublish, "path": SessionPath, "clean": SessionClean}[args[1]]
+		if !ok || len(args) != 2 {
+			return Command{}, errors.New("use bivrost session publish, unpublish, path, or clean without options")
+		}
+		return Command{Kind: kind}, nil
 	case "doctor":
 		return parseConnectionCommand(Doctor, "doctor", args[1:], false)
 	case "switch":
