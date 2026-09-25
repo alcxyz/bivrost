@@ -376,3 +376,9 @@ any routes from an earlier download. This includes visibly reported permission
 denials and validation failures. Cancellation always stops setup. Profiles
 without `heimdal` retain the normal local-only behavior. Standalone `ssh` and
 proxy commands do not retrieve Heimdal metadata.
+
+## Architecture diagrams
+
+See the [visual architecture guide](docs/architecture.md) for local command execution,
+Heimdal storage, permission boundaries and session lifecycle. The Heimdal layouts
+are generic reference designs for adopters, not an installed configuration.

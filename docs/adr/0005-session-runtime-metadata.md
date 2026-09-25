@@ -115,7 +115,8 @@ Terraform-state maintainers. State-maintenance access must not implicitly grant
 metadata publication rights. Provider scopes and conditions enforce that split;
 PIM controls its activation window. A shared metadata container is appropriate
 when its consumers share a read boundary. See the generic
-[Azure adoption example](../heimdal-adoption.md) for a deployment illustration.
+[Azure adoption example](../heimdal-adoption.md) and
+[reference diagrams](../architecture.md) for deployment illustrations.
 
 Runtime acquisition keeps deployment data outside the public catalogue. Source
 outages have explicit fallback behavior. Future publication/update work must

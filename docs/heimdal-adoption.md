@@ -13,6 +13,9 @@ first-time publication and opt-in retrieval during connect/reconnect. Ongoing
 publication and rollback, and Bivrost-managed PIM activation are planned features. Activate
 PIM through the provider's own interface today; Bivrost has no `pim` command.
 
+For a visual walkthrough, see [architecture and reference diagrams](architecture.md),
+especially the storage layout, permission grants and connection lifecycle.
+
 ## Storage and ownership
 
 An example organization has a platform team and application teams Alpha and
