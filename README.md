@@ -14,10 +14,9 @@ Forgejo is a mirror. Bivrost is released under the MIT License.
 - Opens a local shell whose private network traffic uses Azure Bastion and SSH.
 - Creates a temporary kubeconfig for `kubectl` when the selected environment
   has Kubernetes details. It is scoped to the child shell and leaves your
-  normal kubeconfig context alone. Missing Kubernetes tools or unavailable AKS
-  credentials leave other platform commands usable with an isolated empty
-  kubeconfig; the session reports the limitation instead of selecting your
-  normal cluster.
+  normal kubeconfig context alone. If Kubernetes tools are missing or AKS
+  credentials cannot be obtained, the shell still opens with an isolated empty
+  kubeconfig and reports the limitation. It never selects your normal cluster.
 - Uses Podman on the local computer, either its native Linux engine or a local
   Podman Machine. Podman configuration, proxying, and the optional registry
   engine are session-scoped. Docker is not supported.
@@ -25,10 +24,11 @@ Forgejo is a mirror. Bivrost is released under the MIT License.
 End the shell to close its tunnels, temporary files, and session-owned
 processes.
 
-**Use a trusted personal workstation.** Ordinary session tunnels are accessible
-to other local users/processes; loopback is not per-user isolation. Podman
-registry credentials may persist after disconnect. Read the
-[security boundaries](docs/security-boundaries.md) before deploying Bivrost.
+**Use a trusted personal workstation.** Other local users and processes on the
+same computer can reach ordinary session tunnels; binding to loopback is not
+per-user isolation. Podman registry credentials may persist after disconnect.
+Read the [security boundaries](docs/security-boundaries.md) before deploying
+Bivrost.
 
 ## Install a release
 
@@ -198,10 +198,9 @@ The catalogue contains metadata only. It must not contain passwords, access
 tokens, private keys, or other credentials. A user may override an environment
 with `XDG_CONFIG_HOME/bivrost/environments/<name>.json`. When
 `XDG_CONFIG_HOME` is unset, Bivrost uses the platform's native user
-configuration directory; on macOS this is the directory returned by the
-operating system's user-configuration API (normally `Library/Application
-Support`) unless `XDG_CONFIG_HOME` is set. `--config PATH` selects an explicit
-JSON profile and is mutually exclusive with `--env`.
+configuration directory; on macOS that is normally `~/Library/Application
+Support`. `--config PATH` selects an explicit JSON profile and is mutually
+exclusive with `--env`.
 
 ## Platform status
 
@@ -281,10 +280,11 @@ usable. Exit removes the publication. Switching creates a new context and path;
 select it explicitly in external clients. If the new session has no Kubernetes
 access, nothing is published.
 
-After a crash, a stale file may remain but cannot use a replacement session's
-transport. `bivrost session clean` removes recognised stale publications; publish
-also performs this cleanup. The files are private local capabilities: do not
-share them, commit them, or include their contents in logs.
+After a crash, a stale publication file may remain. Its capability cannot
+authenticate to a replacement session's gateway. `bivrost session clean` removes
+recognised stale publications; publish also performs this cleanup. The files
+are private local capabilities: do not share them, commit them, or include
+their contents in logs.
 
 Linux and macOS desktop discovery is configured separately from Bivrost. Native
 Windows and real GUI-client behavior require live QA.
@@ -293,7 +293,7 @@ Windows and real GUI-client behavior require live QA.
 
 Heimdal uses one existing Azure container by default, named `heimdal`. Each
 connection environment has its own blob prefix inside that shared container.
-The storage account and publishing subscription are explicit:
+You must name the storage account and the publishing subscription explicitly:
 
 ```sh
 bivrost heimdal init -e example --subscription SUBSCRIPTION --account ACCOUNT \
@@ -317,11 +317,14 @@ Local staging files are private and removed on normal completion or handled
 cancellation; an abrupt crash may leave them in the OS temporary directory.
 
 For private storage, run inside a session whose bootstrap already routes the
-metadata hostname. The command prints the source locator for the downstream
-bootstrap configuration. Separate read and publish permissions; an ordinary
-consumer should not need publishing rights. A content digest verifies the
-referenced bytes, not publisher identity; trust also depends on the configured
-source and its access controls.
+metadata hostname. Inside a session, the command verifies the active session
+through its controller, so it needs a Bash, Zsh, or PowerShell session; in
+other shells it refuses to run because the session controller is unavailable.
+The command prints the source locator for the downstream bootstrap
+configuration. Separate read and publish permissions; an ordinary consumer
+should not need publishing rights. A content digest verifies the referenced
+bytes, not publisher identity; trust also depends on the configured source and
+its access controls.
 
 **This initial slice only publishes metadata.** Automatic retrieval on connect,
 validated installation of routes, updating the current pointer, and rollback

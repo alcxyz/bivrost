@@ -11,7 +11,6 @@ its implementation is complete.
 - [#5: establish a Terraform baseline](https://github.com/alcxyz/bivrost/issues/5)
 - [#6: complete Windows native Podman Machine QA](https://github.com/alcxyz/bivrost/issues/6)
 - [#8: add Tesseract encrypted local configuration](https://github.com/alcxyz/bivrost/issues/8)
-
 - [#10: incremental multi-cloud capability boundaries](https://github.com/alcxyz/bivrost/issues/10)
 - [#28: isolate session transports from unrelated local users](https://github.com/alcxyz/bivrost/issues/28)
 
