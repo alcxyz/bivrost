@@ -7,6 +7,10 @@
 Initial publication and opt-in startup retrieval are implemented on the
 development branch. They are not part of the current stable release.
 
+The future administrator/user command split and infrastructure ownership are
+recorded in [ADR 0013](0013-heimdal-adopter-lifecycle.md). Its planned user-facing
+`heimdal init` does not describe the current publishing command.
+
 ## Context
 
 Environment metadata can change independently of a binary release. Refreshing

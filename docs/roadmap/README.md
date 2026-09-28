@@ -21,6 +21,23 @@ Initial Heimdal publication and opt-in startup retrieval are on `dev`;
 live Azure QA and ongoing publication/rollback remain open. Terraform container
 metadata diagnostics have live macOS QA; this does not establish state or plan access.
 
+## Heimdal adoption lifecycle
+
+[ADR 0013](../adr/0013-heimdal-adopter-lifecycle.md) records the accepted future
+command split. None of these new interfaces are implemented yet.
+
+1. [#34: IaC bootstrap](https://github.com/alcxyz/bivrost/issues/34): generate versioned cloud infrastructure definitions and a minimal onboarding reference.
+2. [#31: publication](https://github.com/alcxyz/bivrost/issues/31): move administrative initialization to `heimdal publish`, then support idempotent CI renewal and conditional updates.
+3. [#35: user onboarding](https://github.com/alcxyz/bivrost/issues/35): reserve `heimdal init` for consumers and add fresh environment discovery for `list` and `connect -e`.
+4. Complete [#4 runtime QA](https://github.com/alcxyz/bivrost/issues/4), including private-source bootstrap and reader/publisher isolation.
+
+The milestone should demonstrate bootstrap → first publication → user onboarding
+→ connection, plus repeatable CI maintenance and permission checks. The concrete
+IaC implementation and catalogue schema/precedence require design before coding.
+
+[#36: retirement](https://github.com/alcxyz/bivrost/issues/36) is deferred outside
+this milestone; resource ownership and shared-resource boundaries start at bootstrap.
+
 ## Metadata delivery order
 
 The [Azure adoption example](../heimdal-adoption.md) describes reader/publisher
