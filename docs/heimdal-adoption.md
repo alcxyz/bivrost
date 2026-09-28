@@ -16,6 +16,11 @@ PIM through the provider's own interface today; Bivrost has no `pim` command.
 For a visual walkthrough, see [architecture and reference diagrams](architecture.md),
 especially the storage layout, permission grants and connection lifecycle.
 
+For the accepted **future lifecycle**, see [ADR 0013](adr/0013-heimdal-adopter-lifecycle.md):
+IaC bootstrap, administrative `heimdal publish`, and consumer `heimdal init`.
+The examples below show current development behavior; the command migration and
+environment catalogue onboarding have not shipped. Retirement is deferred.
+
 ## Storage and ownership
 
 An example organization has a platform team and application teams Alpha and
