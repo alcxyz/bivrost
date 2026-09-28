@@ -32,8 +32,8 @@ commands users can rely on in the current build.
 
 The adopter's IaC state owns the cloud resource lifecycle. Bivrost must not
 maintain a competing inventory or implicitly deploy changes merely by generating
-definitions. The concrete IaC implementation remains an implementation decision
-to settle before coding; this ADR does not select a provisioning engine.
+definitions. The first reference format is selected in
+[ADR 0014](0014-heimdal-bootstrap-reference.md); it does not add automatic deployment.
 
 Inputs explicitly identify tenant, subscription, region, network choices and
 identity groups. Do not silently use the Azure CLI's selected subscription.

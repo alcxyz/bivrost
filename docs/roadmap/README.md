@@ -32,8 +32,9 @@ command split. None of these new interfaces are implemented yet.
 4. Complete [#4 runtime QA](https://github.com/alcxyz/bivrost/issues/4), including private-source bootstrap and reader/publisher isolation.
 
 The milestone should demonstrate bootstrap → first publication → user onboarding
-→ connection, plus repeatable CI maintenance and permission checks. The concrete
-IaC implementation and catalogue schema/precedence require design before coding.
+→ connection, plus repeatable CI maintenance and permission checks. The HCL infrastructure
+reference is described in [ADR 0014](../adr/0014-heimdal-bootstrap-reference.md).
+CLI generation and live QA remain pending; catalogue schema/precedence still require design.
 
 [#36: retirement](https://github.com/alcxyz/bivrost/issues/36) is deferred outside
 this milestone; resource ownership and shared-resource boundaries start at bootstrap.
