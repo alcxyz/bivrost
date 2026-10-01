@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/alcxyz/bivrost/internal/authbrowser"
@@ -142,16 +143,24 @@ func containsAny(data []byte, markers []string) bool {
 }
 
 // boundedOutput keeps the start of subprocess output for local classification.
+// It is read while the command still writes to it.
 type boundedOutput struct {
+	mu    sync.Mutex
 	data  bytes.Buffer
 	limit int
 }
 
 func (b *boundedOutput) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	if remaining := b.limit - b.data.Len(); remaining > 0 {
 		b.data.Write(p[:min(len(p), remaining)])
 	}
 	return len(p), nil
 }
 
-func (b *boundedOutput) Bytes() []byte { return b.data.Bytes() }
+func (b *boundedOutput) Bytes() []byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return bytes.Clone(b.data.Bytes())
+}
