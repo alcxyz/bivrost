@@ -7,10 +7,10 @@ import (
 	"os"
 )
 
-// Terminal returns the controlling terminal, or os.Stderr without one.
+// Terminal returns the controlling terminal, or nil without one.
 func Terminal() io.Writer {
-	if tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0); err == nil {
-		return tty
+	if terminal, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0); err == nil {
+		return terminal
 	}
-	return os.Stderr
+	return nil
 }

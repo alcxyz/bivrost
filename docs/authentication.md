@@ -70,7 +70,13 @@ Find a Chromium profile directory name on its `chrome://version` or
 Without this setting, sign-in during connect uses your `BROWSER` environment
 variable if set, otherwise the system default browser, and `bivrost login`
 leaves the choice to Azure CLI. Bivrost never changes the system default
-browser.
+browser. On Linux, `BROWSER` entries naming `microsoft-edge` are skipped during
+connect, because Azure CLI would open Edge directly without telling Bivrost; use
+`authentication_browser` to choose Edge.
+
+If no browser can open, for example over SSH without a display, connect stops
+and suggests `authentication_browser` or `bivrost login --ssh` on a machine with
+a browser.
 
 If the configured browser cannot start, Bivrost does not fall back to the system
 default. It prints the sign-in address on your terminal so you can open it in

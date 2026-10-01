@@ -73,7 +73,14 @@ see a browser during connect can opt out.
 
 When Bivrost declines to choose a browser, MSAL's Linux preference for Edge no
 longer applies, because `BROWSER` is set; the user's `BROWSER` value or the
-system default is used instead.
+system default is used instead. MSAL also bypasses `BROWSER` whenever it
+mentions `microsoft-edge`, so such entries are omitted from the fall-through;
+`authentication_browser` can still select Edge. A launched browser receives the
+user's environment without Bivrost's routing variables.
+
+Azure CLI warnings go to a private file in the session directory rather than a
+pipe, because a newly started browser inherits Azure CLI's stderr and could hold
+a pipe open after sign-in completes. The file is removed when setup ends.
 
 On Windows, Azure CLI uses the WAM broker by default. WAM shows its own account
 dialog rather than a browser, including for SSH certificates, and `BROWSER`
@@ -81,8 +88,8 @@ cannot intercept it or signal Bivrost. Such prompts keep the two-minute setup
 deadline. Disabling the broker would also change silent token acquisition, so
 Bivrost leaves it unchanged.
 
-If no browser can open, MSAL waits for a redirect that never arrives; the
-five-minute deadline then ends setup. Whether `az login --scope` satisfies the
+If no browser can open, MSAL logs that and waits for a redirect that never
+arrives; Bivrost recognizes the warning and stops setup with guidance. Whether `az login --scope` satisfies the
 silent SSH certificate request in advance depends on tenant policy and needs
 live verification.
 

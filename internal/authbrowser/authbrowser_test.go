@@ -189,3 +189,63 @@ func TestRunInteractiveWithoutConfigurationDefersToNextBrowser(t *testing.T) {
 		t.Fatalf("signal = %v, output = %q", Requested(signal), out.String())
 	}
 }
+
+func TestInteractiveDropsEdgeEntriesThatBypassBivrost(t *testing.T) {
+	separator := string(os.PathListSeparator)
+	t.Setenv("BROWSER", "/usr/bin/microsoft-edge"+separator+"firefox"+separator+"microsoft-edge-stable")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("az")
+	if err := Interactive(cmd, ""); err != nil {
+		t.Fatal(err)
+	}
+	got := environment(cmd)["BROWSER"]
+	if want := executable + separator + "firefox"; len(got) != 1 || got[0] != want {
+		t.Fatalf("BROWSER = %q, want %q", got, want)
+	}
+}
+
+func TestUserEnvironmentRemovesRouting(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	separator := string(os.PathListSeparator)
+	got := userEnvironment([]string{"PATH=/bin", "BROWSER=" + executable + separator + "firefox", modeVariable + "=interactive", signalVariable + "=/session/signal"})
+	if want := []string{"PATH=/bin", "BROWSER=firefox"}; strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("userEnvironment() = %q, want %q", got, want)
+	}
+	got = userEnvironment([]string{"BROWSER=" + executable, modeVariable + "=refuse"})
+	if len(got) != 0 {
+		t.Fatalf("userEnvironment() = %q, want empty", got)
+	}
+}
+
+func TestRunWithoutTerminalNeverShowsAddress(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", root)
+	t.Setenv("APPDATA", root)
+	t.Setenv(modeVariable, modeInteractive)
+	writeBrowserSettings(t, root, `{"authentication_browser":{"executable":"`+filepath.ToSlash(filepath.Join(root, "missing-browser"))+`"}}`)
+	// Redirect standard error to a file to observe what a non-terminal receives.
+	capture, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := os.Stderr
+	os.Stderr = capture
+	status := Run([]string{testAddress}, nil)
+	os.Stderr = previous
+	if status != 0 {
+		t.Fatalf("Run() = %d, want 0", status)
+	}
+	data, err := os.ReadFile(capture.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "SENSITIVE_STATE") || !strings.Contains(string(data), "No terminal is available") {
+		t.Fatalf("non-terminal output = %q", data)
+	}
+}

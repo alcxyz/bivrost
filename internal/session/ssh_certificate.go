@@ -5,9 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/alcxyz/bivrost/internal/authbrowser"
@@ -49,7 +50,17 @@ func prepareSSHCertificate(ctx context.Context, c profile.Profile, sshConfig, di
 	if err != nil {
 		return err
 	}
-	stderr := &boundedOutput{limit: 64 * 1024}
+	// Azure CLI warnings go to a private file rather than a pipe: a browser
+	// started by webbrowser inherits stderr and would hold a pipe open after
+	// Azure CLI exits. The file is removed before setup returns.
+	stderrPath := filepath.Join(directory, "azure-cli-warnings")
+	stderr, err := os.OpenFile(stderrPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return errors.New("could not prepare Entra SSH setup")
+	}
+	defer os.Remove(stderrPath)
+	defer stderr.Close()
+	warnings := func() []byte { return readPrefix(stderrPath, 64*1024) }
 	cmd.Stderr = stderr
 	// Azure CLI launchers may run Python as a child; stop the whole group.
 	prepareProcess(cmd)
@@ -59,11 +70,18 @@ func prepareSSHCertificate(ctx context.Context, c profile.Profile, sshConfig, di
 	}
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
+	stop := func() {
+		cancel()
+		<-done
+	}
 	deadline := time.NewTimer(sshCertificateTimeout)
 	defer deadline.Stop()
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	signingIn := false
+	refused := func() error {
+		return fmt.Errorf("%w for the Entra SSH certificate: %s. Bivrost did not open a browser because interactive_connect is off; run bivrost login --ssh, then connect again", diagnostics.ErrInteractionRequired, interactionReason(warnings()))
+	}
 	for {
 		select {
 		case err := <-done:
@@ -73,33 +91,45 @@ func prepareSSHCertificate(ctx context.Context, c profile.Profile, sshConfig, di
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if signingIn {
+			// The request may arrive between polls.
+			if signingIn || authbrowser.Requested(signal) {
+				if !interactive {
+					return refused()
+				}
 				return fmt.Errorf("%w: Entra SSH sign-in did not complete; connect again and finish sign-in in the browser, or run bivrost login --ssh first", diagnostics.ErrInteractionRequired)
 			}
-			return sshCertificateError(stderr.Bytes())
+			return sshCertificateError(warnings())
 		case <-deadline.C:
-			cancel()
-			<-done
+			stop()
 			if signingIn {
 				return fmt.Errorf("Entra SSH sign-in was not completed within %v; connect again and finish sign-in in the browser: %w", sshSignInTimeout, context.DeadlineExceeded)
 			}
 			return fmt.Errorf("Entra SSH setup timed out; check Azure login and connectivity, then retry: %w", context.DeadlineExceeded)
 		case <-ticker.C:
-			if signingIn || !authbrowser.Requested(signal) {
+			if signingIn {
+				// MSAL waits for a redirect even when no browser could open.
+				if bytes.Contains(warnings(), []byte(noBrowserWarning)) {
+					stop()
+					return fmt.Errorf("%w: no browser could be opened for Entra SSH sign-in; set authentication_browser, or run bivrost login --ssh where a browser is available, then connect again", diagnostics.ErrInteractionRequired)
+				}
 				continue
 			}
-			reason := interactionReason(stderr.Bytes())
+			if !authbrowser.Requested(signal) {
+				continue
+			}
 			if !interactive {
-				cancel()
-				<-done
-				return fmt.Errorf("%w for the Entra SSH certificate: %s. Bivrost did not open a browser because interactive_connect is off; run bivrost login --ssh, then connect again", diagnostics.ErrInteractionRequired, reason)
+				stop()
+				return refused()
 			}
 			signingIn = true
 			deadline.Reset(sshSignInTimeout)
-			fmt.Printf("Azure needs interactive sign-in for the SSH certificate: %s.\nContinue in the browser window; waiting up to %v...\n", reason, sshSignInTimeout)
+			fmt.Printf("Azure needs interactive sign-in for the SSH certificate: %s.\nContinue in the browser window; waiting up to %v...\n", interactionReason(warnings()), sshSignInTimeout)
 		}
 	}
 }
+
+// MSAL logs this when every browser failed to open the sign-in page.
+const noBrowserWarning = "Found no browser in current environment"
 
 type knownInteraction struct {
 	codes  []string
@@ -142,25 +172,13 @@ func containsAny(data []byte, markers []string) bool {
 	return false
 }
 
-// boundedOutput keeps the start of subprocess output for local classification.
-// It is read while the command still writes to it.
-type boundedOutput struct {
-	mu    sync.Mutex
-	data  bytes.Buffer
-	limit int
-}
-
-func (b *boundedOutput) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if remaining := b.limit - b.data.Len(); remaining > 0 {
-		b.data.Write(p[:min(len(p), remaining)])
+// readPrefix returns at most limit bytes from the start of path.
+func readPrefix(path string, limit int64) []byte {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
 	}
-	return len(p), nil
-}
-
-func (b *boundedOutput) Bytes() []byte {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return bytes.Clone(b.data.Bytes())
+	defer file.Close()
+	data, _ := io.ReadAll(io.LimitReader(file, limit))
+	return data
 }

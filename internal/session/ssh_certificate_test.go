@@ -2,7 +2,6 @@ package session
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -39,18 +38,5 @@ func TestSSHCertificateErrorSeparatesConnectivity(t *testing.T) {
 	other := sshCertificateError([]byte("AADSTS50076"))
 	if errors.Is(other, diagnostics.ErrInteractionRequired) || !strings.Contains(other.Error(), "Entra SSH setup failed") {
 		t.Fatalf("generic error = %v", other)
-	}
-}
-
-func TestBoundedOutputKeepsPrefix(t *testing.T) {
-	t.Parallel()
-	output := boundedOutput{limit: 4}
-	for _, part := range []string{"ab", "cdef", "gh"} {
-		if n, err := fmt.Fprint(&output, part); err != nil || n != len(part) {
-			t.Fatalf("Write(%q) = %d, %v", part, n, err)
-		}
-	}
-	if got := string(output.Bytes()); got != "abcd" {
-		t.Fatalf("Bytes() = %q", got)
 	}
 }

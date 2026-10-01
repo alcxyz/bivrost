@@ -22,7 +22,7 @@ func Command(ctx context.Context, args ...string) (*exec.Cmd, error) {
 }
 
 // InteractiveCommand creates an Azure CLI command that may open a browser for
-// explicit sign-in. Callers choose the browser with authbrowser.Launch.
+// sign-in. Callers choose the browser with authbrowser.Interactive.
 func InteractiveCommand(ctx context.Context, args ...string) (*exec.Cmd, error) {
 	return command(ctx, args...)
 }

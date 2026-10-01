@@ -80,7 +80,10 @@ func route(cmd *exec.Cmd, mode, signal string) error {
 			previous = os.Getenv(browserVariable)
 		}
 		for _, previous := range strings.Split(previous, string(os.PathListSeparator)) {
-			if previous != "" && previous != executable {
+			// On Linux, MSAL opens Edge directly, bypassing BROWSER, whenever
+			// BROWSER mentions microsoft-edge. Such entries would stop Bivrost
+			// from seeing the request; authentication_browser can select Edge.
+			if previous != "" && previous != executable && !strings.Contains(previous, "microsoft-edge") {
 				browser += string(os.PathListSeparator) + previous
 			}
 		}
@@ -126,9 +129,14 @@ func withoutVariables(env []string, names ...string) []string {
 // Run handles one browser request from Azure CLI and returns its exit status.
 // Status 0 tells Python's webbrowser module that a browser opened; any other
 // status makes it try the next BROWSER entry or the system default browser.
-// Messages go to out, which should be the user's terminal: Azure CLI output is
-// captured during connection setup.
-func Run(args []string, out io.Writer) int {
+// Messages go to terminal, the user's terminal: Azure CLI output is captured
+// during connection setup. When terminal is nil, a generic message goes to
+// standard error and the sign-in address is never shown.
+func Run(args []string, terminal io.Writer) int {
+	out := terminal
+	if out == nil {
+		out = os.Stderr
+	}
 	address := ""
 	if len(args) == 1 && validAddress(args[0]) {
 		address = args[0]
@@ -157,6 +165,10 @@ func Run(args []string, out io.Writer) int {
 		// Azure CLI keeps waiting for the redirect, so a manually opened page
 		// still completes this sign-in. The address is shown only on the terminal.
 		fmt.Fprintf(out, "Bivrost could not open the configured authentication browser: %v.\n", err)
+		if terminal == nil {
+			fmt.Fprintln(out, "No terminal is available to show the sign-in address; fix authentication_browser and sign in again.")
+			return 0
+		}
 		fmt.Fprintln(out, "Open this address in the intended browser profile to continue:")
 		fmt.Fprintln(out, address)
 		return 0
@@ -172,6 +184,8 @@ func start(browser profile.AuthenticationBrowser, address string) error {
 		return errors.New("the browser executable was not found")
 	}
 	cmd := exec.Command(path, args...)
+	// Wrappers such as xdg-open honor BROWSER; never route them back here.
+	cmd.Env = userEnvironment(os.Environ())
 	// The browser outlives this short-lived launcher. Detaching it also keeps
 	// Azure CLI from waiting on a browser that was not already running.
 	detach(cmd)
@@ -180,6 +194,23 @@ func start(browser profile.AuthenticationBrowser, address string) error {
 	}
 	_ = cmd.Process.Release()
 	return nil
+}
+
+// userEnvironment removes Bivrost's routing from env, keeping the user's own
+// BROWSER entries.
+func userEnvironment(env []string) []string {
+	executable, _ := os.Executable()
+	var browsers []string
+	for _, entry := range strings.Split(lookup(env, browserVariable), string(os.PathListSeparator)) {
+		if entry != "" && entry != executable {
+			browsers = append(browsers, entry)
+		}
+	}
+	env = withoutVariables(env, browserVariable, modeVariable, signalVariable)
+	if len(browsers) != 0 {
+		env = append(env, browserVariable+"="+strings.Join(browsers, string(os.PathListSeparator)))
+	}
+	return env
 }
 
 func validAddress(address string) bool {

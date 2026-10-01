@@ -190,3 +190,51 @@ func assertProcessStopped(t *testing.T, pidFile string) {
 		t.Fatalf("fake Azure CLI process %d is still running", pid)
 	}
 }
+
+func TestPrepareSSHCertificateIgnoresBrowserHoldingStderr(t *testing.T) {
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skip("sleep is not installed")
+	}
+	// A newly started default browser inherits Azure CLI's stderr and outlives it.
+	fakeSSHCertificateAzureCLI(t, sleep+" 3 &\nexit 0\n")
+	start := time.Now()
+	if err := runPrepareSSHCertificate(t); err != nil {
+		t.Fatalf("prepareSSHCertificate() = %v, want success after sign-in", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("prepareSSHCertificate() waited %v for the browser to exit", elapsed)
+	}
+}
+
+func TestPrepareSSHCertificateStopsWhenNoBrowserOpens(t *testing.T) {
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skip("sleep is not installed")
+	}
+	records := fakeSSHCertificateAzureCLI(t, "echo 'Found no browser in current environment. Auth URI: "+testSignInAddress+"' >&2\nexec "+sleep+" 60\n")
+	start := time.Now()
+	err = runPrepareSSHCertificate(t)
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Fatalf("prepareSSHCertificate() waited %v without a browser", elapsed)
+	}
+	if !errors.Is(err, diagnostics.ErrInteractionRequired) || !strings.Contains(err.Error(), "no browser could be opened") || strings.Contains(err.Error(), "SENSITIVE_STATE") {
+		t.Fatalf("prepareSSHCertificate() error = %v", err)
+	}
+	assertProcessStopped(t, filepath.Join(records, "pid"))
+}
+
+func TestPrepareSSHCertificateClassifiesRequestBeforeExit(t *testing.T) {
+	for _, strict := range []bool{false, true} {
+		fakeSSHCertificateAzureCLI(t, "exit 1\n")
+		want := "did not complete"
+		if strict {
+			writeUserSettings(t, `{"interactive_connect":false}`)
+			want = "interactive_connect is off"
+		}
+		err := runPrepareSSHCertificate(t)
+		if !errors.Is(err, diagnostics.ErrInteractionRequired) || !strings.Contains(err.Error(), want) {
+			t.Errorf("strict=%v: prepareSSHCertificate() error = %v, want %q", strict, err, want)
+		}
+	}
+}
