@@ -19,4 +19,5 @@ described work already exists.
 | [0011](0011-go-package-layout.md) | Go package boundaries and command entry point | Accepted |
 | [0012](0012-opt-in-session-publication.md) | Opt-in Kubernetes session publication | Accepted |
 | [0013](0013-heimdal-adopter-lifecycle.md) | Heimdal administrator, user and CI lifecycle | Accepted future direction |
+| [0014](0014-heimdal-bootstrap-reference.md) | Heimdal bootstrap reference implementation | Accepted for reference example; CLI generation and live QA pending |
 | [0015](0015-authentication-browser-boundary.md) | Authentication browser selection and prompts | Accepted; live Entra and Windows WAM QA pending |

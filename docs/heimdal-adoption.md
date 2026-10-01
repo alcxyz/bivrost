@@ -95,6 +95,10 @@ and their [security considerations](https://learn.microsoft.com/en-us/azure/stor
 before designing a shared-container policy. This guide deliberately does not
 provide a partial path condition that could be mistaken for complete isolation.
 
+For a concrete infrastructure starting point, see the
+[bootstrap reference design](heimdal-bootstrap.md). It does not implement the
+planned bootstrap command or replace the current publication interface.
+
 ## Adoption sequence
 
 1. **Provision through your infrastructure workflow.** Create private storage
