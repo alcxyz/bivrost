@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/alcxyz/bivrost/internal/authbrowser"
 	"github.com/alcxyz/bivrost/internal/azure"
 	"github.com/alcxyz/bivrost/internal/cli"
 	profile "github.com/alcxyz/bivrost/internal/config"
@@ -101,7 +102,7 @@ func Run(args []string, version string) (resultErr error) {
 		return enableSessionACR(ctx)
 	}
 	if command.Kind == cli.Login {
-		return localAzureLogin(ctx, command.Tenant)
+		return localAzureLogin(ctx, command)
 	}
 	if command.Kind == cli.TerraformDoctor {
 		return runTerraformDoctor(ctx, command, os.Stdout)
@@ -192,12 +193,22 @@ func withPrivateHosts(c profile.Profile, additional []string) (profile.Profile, 
 	return c, nil
 }
 
-func localAzureLogin(ctx context.Context, tenant string) (resultErr error) {
+func localAzureLogin(ctx context.Context, command cli.Command) (resultErr error) {
 	finish := diagnostics.Step(ctx, diagnostics.EventAzureLogin)
 	defer func() { finish(resultErr) }()
-	cmd, err := azure.Command(ctx, azure.LoginArguments(tenant)...)
+	browser, err := profile.LoadAuthenticationBrowser()
 	if err != nil {
 		return err
+	}
+	cmd, err := azure.InteractiveCommand(ctx, azure.LoginArguments(command.Tenant, command.DeviceCode, command.SSHLogin)...)
+	if err != nil {
+		return err
+	}
+	// Without authentication_browser, Azure CLI keeps its normal browser choice.
+	if browser != nil {
+		if err := authbrowser.Launch(cmd); err != nil {
+			return err
+		}
 	}
 	// This logs in the local Azure CLI. It does not authenticate an Azure CLI
 	// inside the VM reached by `bivrost ssh`.

@@ -8,11 +8,16 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/alcxyz/bivrost/internal/authbrowser"
 	"github.com/alcxyz/bivrost/internal/podman"
 	"github.com/alcxyz/bivrost/internal/session"
 )
 
 func main() {
+	// Azure CLI child processes reach Bivrost through BROWSER for sign-in pages.
+	if authbrowser.Active(os.Args[1:]) {
+		os.Exit(authbrowser.Run(os.Args[1:], os.Stderr))
+	}
 	if strings.EqualFold(filepath.Base(os.Args[0]), "podman") || strings.EqualFold(filepath.Base(os.Args[0]), "podman.exe") {
 		os.Exit(podman.RunWrapper())
 	}

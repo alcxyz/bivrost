@@ -49,6 +49,8 @@ type Command struct {
 	NoPull           bool
 	NoLogin          bool
 	Tenant           string
+	DeviceCode       bool
+	SSHLogin         bool
 	Debug            bool
 	Refresh          bool
 	Subscription     string
@@ -306,6 +308,8 @@ func parseLoginCommand(args []string) (Command, error) {
 	flags.BoolVar(debug, "d", false, "write a bounded local diagnostic log")
 	tenant := flags.String("tenant", "", "Azure tenant to authenticate against")
 	flags.StringVar(tenant, "t", "", "Azure tenant to authenticate against")
+	deviceCode := flags.Bool("device-code", false, "sign in with a device code instead of a browser")
+	ssh := flags.Bool("ssh", false, "also satisfy Entra SSH certificate sign-in requirements")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return Command{Kind: Help, HelpTopic: "login"}, nil
@@ -320,7 +324,7 @@ func parseLoginCommand(args []string) (Command, error) {
 	if seenTenant && strings.TrimSpace(*tenant) == "" {
 		return Command{}, errors.New("--tenant requires a non-empty value")
 	}
-	return Command{Kind: Login, Tenant: *tenant, Debug: *debug}, nil
+	return Command{Kind: Login, Tenant: *tenant, DeviceCode: *deviceCode, SSHLogin: *ssh, Debug: *debug}, nil
 }
 
 func parseHeimdalInit(args []string) (Command, error) {

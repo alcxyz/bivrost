@@ -42,6 +42,13 @@ auth store and verified native/Podman Machine support before cleanup can make
 that guarantee. Processes running as the same OS user are inside that user's
 credential trust boundary; Bivrost does not protect against them.
 
+Azure CLI child processes cannot open a browser on their own. Bivrost refuses
+their sign-in requests outside `bivrost login` and starts only the configured
+authentication browser for explicit login. A process running as the same user
+could set the same variables to invoke that configured browser, but this grants
+no capability beyond running the browser directly. See
+[authentication and browser profiles](authentication.md).
+
 ## Metadata and authorization
 
 Heimdal publication is trusted configuration administration. Content-addressed

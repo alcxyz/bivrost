@@ -66,9 +66,39 @@ func InitSettings() (string, error) {
 	return path, nil
 }
 
-// Prompt preferences are user-local and independent of connection profiles.
+// AuthenticationBrowser starts explicit interactive sign-in in a chosen browser
+// or profile. Arguments are passed directly, never through a shell; an argument
+// equal to AuthenticationURLPlaceholder receives the sign-in address, which is
+// otherwise appended.
+type AuthenticationBrowser struct {
+	Executable string   `json:"executable"`
+	Arguments  []string `json:"arguments"`
+}
+
+const AuthenticationURLPlaceholder = "{url}"
+
+// Command returns the browser executable and arguments for one sign-in address.
+func (b AuthenticationBrowser) Command(address string) (string, []string) {
+	args := make([]string, 0, len(b.Arguments)+1)
+	placed := false
+	for _, argument := range b.Arguments {
+		if argument == AuthenticationURLPlaceholder {
+			argument = address
+			placed = true
+		}
+		args = append(args, argument)
+	}
+	if !placed {
+		args = append(args, address)
+	}
+	return b.Executable, args
+}
+
+// Prompt and authentication browser preferences are user-local and independent
+// of connection profiles.
 type userSettings struct {
-	Prompt PromptSettings
+	Prompt                PromptSettings
+	AuthenticationBrowser *AuthenticationBrowser
 }
 
 func LoadPromptSettings() (PromptSettings, error) {
@@ -98,7 +128,8 @@ func LoadUserSettings() (userSettings, error) {
 		return defaults, errors.New("Bivrost settings.json exceeds 64 KiB")
 	}
 	var settings struct {
-		Prompt json.RawMessage `json:"prompt"`
+		Prompt                json.RawMessage `json:"prompt"`
+		AuthenticationBrowser json.RawMessage `json:"authentication_browser"`
 	}
 	if err := decodeSettingsObject(data, &settings); err != nil {
 		return defaults, err
@@ -112,8 +143,70 @@ func LoadUserSettings() (userSettings, error) {
 	if err := ValidatePromptSettings(result.Prompt); err != nil {
 		return defaults, err
 	}
+	if len(settings.AuthenticationBrowser) != 0 {
+		var browser AuthenticationBrowser
+		if err := decodeSettingsObject(settings.AuthenticationBrowser, &browser); err != nil {
+			return defaults, err
+		}
+		if err := ValidateAuthenticationBrowser(browser); err != nil {
+			return defaults, err
+		}
+		result.AuthenticationBrowser = &browser
+	}
 
 	return result, nil
+}
+
+// LoadAuthenticationBrowser returns the configured sign-in browser, or nil when
+// Azure CLI should use its normal browser selection.
+func LoadAuthenticationBrowser() (*AuthenticationBrowser, error) {
+	settings, err := LoadUserSettings()
+	return settings.AuthenticationBrowser, err
+}
+
+func ValidateAuthenticationBrowser(browser AuthenticationBrowser) error {
+	if strings.TrimSpace(browser.Executable) == "" {
+		return errors.New("authentication_browser executable must not be empty")
+	}
+	if !plainSetting(browser.Executable, 4096) {
+		return errors.New("authentication_browser executable must be at most 4096 characters without control characters")
+	}
+	switch strings.ToLower(filepath.Ext(browser.Executable)) {
+	case ".bat", ".cmd":
+		// Windows runs batch files through cmd.exe, which would reinterpret the
+		// sign-in address as command text.
+		return errors.New("authentication_browser executable must not be a batch file")
+	}
+	if len(browser.Arguments) > 32 {
+		return errors.New("authentication_browser supports at most 32 arguments")
+	}
+	placeholders := 0
+	for _, argument := range browser.Arguments {
+		if !plainSetting(argument, 1024) {
+			return errors.New("authentication_browser arguments must be at most 1024 characters without control characters")
+		}
+		if argument == AuthenticationURLPlaceholder {
+			placeholders++
+		} else if strings.Contains(argument, AuthenticationURLPlaceholder) {
+			return errors.New("authentication_browser {url} must be a whole argument")
+		}
+	}
+	if placeholders > 1 {
+		return errors.New("authentication_browser {url} may appear only once")
+	}
+	return nil
+}
+
+func plainSetting(value string, limit int) bool {
+	if len(value) > limit {
+		return false
+	}
+	for _, r := range value {
+		if r < 32 || r == 127 {
+			return false
+		}
+	}
+	return true
 }
 
 func decodeSettingsObject(data []byte, target any) error {
