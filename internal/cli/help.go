@@ -152,12 +152,21 @@ Usage: bivrost login [options]
 
 Options
   -t, --tenant TENANT  Choose an Azure tenant
+      --device-code    Sign in with a code instead of opening a browser
+      --ssh            Also satisfy VM SSH certificate sign-in requirements
   -d, --debug          Record a bounded local diagnostic log
   -h, --help           Show this help
 
 Use this initially or when Azure requires reauthentication.
 An existing az login works too. Connect and ACR commands reuse
-that sign-in; they do not call bivrost login automatically.
+that sign-in; they do not call bivrost login automatically. When the
+SSH certificate needs multi-factor or Conditional Access sign-in,
+connect opens the browser and waits for you to finish. Doctor and
+discovery commands never open a browser.
+
+The authentication_browser setting selects the browser and profile for
+sign-in pages; otherwise your BROWSER setting or the system default is
+used. --ssh signs in for the VM SSH certificate in advance.
 This does not sign Azure CLI into the management VM.
 
 Example: bivrost login -t YOUR-TENANT-ID
@@ -167,7 +176,9 @@ Example: bivrost login -t YOUR-TENANT-ID
 
 Usage: bivrost config init
 
-Settings control the shell prompt.
+Settings control the shell prompt and, optionally, the browser and
+profile used for Azure sign-in (authentication_browser) and whether
+connect may open it (interactive_connect).
 Defaults work without a file. The file uses XDG_CONFIG_HOME when
 set, otherwise the platform's native user configuration directory.
 Environment profiles can come from BIVROST_CATALOGUE_FILE or from

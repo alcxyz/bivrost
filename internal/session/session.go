@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"time"
 
 	"github.com/alcxyz/bivrost/internal/azure"
 	profile "github.com/alcxyz/bivrost/internal/config"
@@ -76,15 +75,10 @@ func openBastion(ctx context.Context, c profile.Profile) (_ *bastionSession, res
 	if c.SSHUser == "" {
 		fmt.Println("Preparing a short-lived Entra SSH certificate using your local Azure login...")
 		finishCredentials := diagnostics.Step(ctx, diagnostics.EventSSHCredentials)
-		authCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		cmd, e := azure.Command(authCtx, "ssh", "config", "--ip", "127.0.0.1", "--port", strconv.Itoa(s.port), "--file", s.sshConfig, "--keys-destination-folder", s.directory, "--subscription", c.Subscription, "--only-show-errors")
-		if e == nil {
-			e = cmd.Run()
-		}
-		cancel()
+		e := prepareSSHCertificate(ctx, c, s.sshConfig, s.directory, s.port)
 		finishCredentials(e)
 		if e != nil {
-			return nil, errors.New("Entra SSH setup failed; run bivrost login and check the Azure CLI ssh extension and VM login access")
+			return nil, e
 		}
 	} else {
 		if err := os.WriteFile(s.sshConfig, nil, 0600); err != nil {
