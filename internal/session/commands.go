@@ -206,7 +206,7 @@ func localAzureLogin(ctx context.Context, command cli.Command) (resultErr error)
 	}
 	// Without authentication_browser, Azure CLI keeps its normal browser choice.
 	if browser != nil {
-		if err := authbrowser.Launch(cmd); err != nil {
+		if err := authbrowser.Interactive(cmd, ""); err != nil {
 			return err
 		}
 	}

@@ -16,7 +16,7 @@ import (
 func main() {
 	// Azure CLI child processes reach Bivrost through BROWSER for sign-in pages.
 	if authbrowser.Active(os.Args[1:]) {
-		os.Exit(authbrowser.Run(os.Args[1:], os.Stderr))
+		os.Exit(authbrowser.Run(os.Args[1:], authbrowser.Terminal()))
 	}
 	if strings.EqualFold(filepath.Base(os.Args[0]), "podman") || strings.EqualFold(filepath.Base(os.Args[0]), "podman.exe") {
 		os.Exit(podman.RunWrapper())

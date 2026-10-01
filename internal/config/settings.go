@@ -99,6 +99,9 @@ func (b AuthenticationBrowser) Command(address string) (string, []string) {
 type userSettings struct {
 	Prompt                PromptSettings
 	AuthenticationBrowser *AuthenticationBrowser
+	// InteractiveConnect lets connection setup open a browser when Azure CLI
+	// needs sign-in for the SSH certificate. It defaults to true.
+	InteractiveConnect bool
 }
 
 func LoadPromptSettings() (PromptSettings, error) {
@@ -107,7 +110,7 @@ func LoadPromptSettings() (PromptSettings, error) {
 }
 
 func LoadUserSettings() (userSettings, error) {
-	defaults := userSettings{Prompt: DefaultPromptSettings()}
+	defaults := userSettings{Prompt: DefaultPromptSettings(), InteractiveConnect: true}
 	path, err := SettingsPath()
 	if err != nil {
 		return defaults, err
@@ -130,6 +133,7 @@ func LoadUserSettings() (userSettings, error) {
 	var settings struct {
 		Prompt                json.RawMessage `json:"prompt"`
 		AuthenticationBrowser json.RawMessage `json:"authentication_browser"`
+		InteractiveConnect    *bool           `json:"interactive_connect"`
 	}
 	if err := decodeSettingsObject(data, &settings); err != nil {
 		return defaults, err
@@ -153,6 +157,9 @@ func LoadUserSettings() (userSettings, error) {
 		}
 		result.AuthenticationBrowser = &browser
 	}
+	if settings.InteractiveConnect != nil {
+		result.InteractiveConnect = *settings.InteractiveConnect
+	}
 
 	return result, nil
 }
@@ -162,6 +169,13 @@ func LoadUserSettings() (userSettings, error) {
 func LoadAuthenticationBrowser() (*AuthenticationBrowser, error) {
 	settings, err := LoadUserSettings()
 	return settings.AuthenticationBrowser, err
+}
+
+// LoadInteractiveConnect reports whether connection setup may open a browser
+// for Azure sign-in.
+func LoadInteractiveConnect() (bool, error) {
+	settings, err := LoadUserSettings()
+	return settings.InteractiveConnect, err
 }
 
 func ValidateAuthenticationBrowser(browser AuthenticationBrowser) error {

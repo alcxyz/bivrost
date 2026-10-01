@@ -14,7 +14,7 @@ import (
 func TestRunLaunchStartsConfiguredBrowserWithoutShell(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", root)
-	t.Setenv(modeVariable, modeLaunch)
+	t.Setenv(modeVariable, modeInteractive)
 	record := filepath.Join(root, "argv")
 	browser := filepath.Join(root, "browser")
 	script := "#!/bin/sh\nfor argument in \"$@\"; do printf '%s\\n' \"$argument\"; done > \"$0.tmp\" && mv \"$0.tmp\" " + record + "\n"

@@ -38,21 +38,25 @@ func TestRefuseRoutesBrowserToBivrost(t *testing.T) {
 	}
 }
 
-func TestLaunchClearsRefusalSignal(t *testing.T) {
+func TestInteractiveWithoutSignalClearsStaleSignal(t *testing.T) {
 	cmd := exec.Command("az")
 	cmd.Env = []string{"BROWSER=firefox", signalVariable + "=/stale"}
-	if err := Launch(cmd); err != nil {
+	if err := Interactive(cmd, ""); err != nil {
 		t.Fatal(err)
 	}
 	got := environment(cmd)
-	if len(got[modeVariable]) != 1 || got[modeVariable][0] != modeLaunch {
-		t.Fatalf("mode = %q, want launch", got[modeVariable])
+	if len(got[modeVariable]) != 1 || got[modeVariable][0] != modeInteractive {
+		t.Fatalf("mode = %q, want interactive", got[modeVariable])
 	}
 	if _, ok := got[signalVariable]; ok {
-		t.Fatalf("launch kept refusal signal: %q", cmd.Env)
+		t.Fatalf("interactive route kept a stale signal: %q", cmd.Env)
 	}
-	if len(got["BROWSER"]) != 1 || got["BROWSER"][0] == "firefox" {
-		t.Fatalf("BROWSER = %q, want Bivrost executable", got["BROWSER"])
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := executable + string(os.PathListSeparator) + "firefox"; len(got["BROWSER"]) != 1 || got["BROWSER"][0] != want {
+		t.Fatalf("BROWSER = %q, want %q", got["BROWSER"], want)
 	}
 }
 
@@ -111,19 +115,19 @@ func TestRunLaunchReportsManualFallback(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", root)
 	t.Setenv("APPDATA", root)
-	t.Setenv(modeVariable, modeLaunch)
+	t.Setenv(modeVariable, modeInteractive)
 	writeBrowserSettings(t, root, `{"authentication_browser":{"executable":"`+filepath.ToSlash(filepath.Join(root, "missing-browser"))+`"}}`)
 	var stderr bytes.Buffer
 	if status := Run([]string{testAddress}, &stderr); status != 0 {
 		t.Fatalf("Run() = %d, want 0", status)
 	}
-	if !strings.Contains(stderr.String(), "could not open the configured authentication browser") || !strings.Contains(stderr.String(), testAddress) || !strings.Contains(stderr.String(), "--device-code") {
+	if !strings.Contains(stderr.String(), "could not open the configured authentication browser") || !strings.Contains(stderr.String(), testAddress) {
 		t.Fatalf("manual fallback = %q", stderr.String())
 	}
 }
 
 func TestRunLaunchRejectsInvalidAddress(t *testing.T) {
-	t.Setenv(modeVariable, modeLaunch)
+	t.Setenv(modeVariable, modeInteractive)
 	for _, address := range []string{"file:///tmp/x", "https://", "https://login.example/\x1b[31m", "javascript:alert(1)"} {
 		var stderr bytes.Buffer
 		if status := Run([]string{address}, &stderr); status != 0 {
@@ -143,5 +147,45 @@ func writeBrowserSettings(t *testing.T, root, content string) {
 	}
 	if err := os.WriteFile(filepath.Join(directory, "settings.json"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestInteractiveKeepsUserBrowserAfterBivrost(t *testing.T) {
+	separator := string(os.PathListSeparator)
+	t.Setenv("BROWSER", "firefox"+separator+"chromium")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// azure.Command refuses first; connection setup then allows interaction.
+	cmd := exec.Command("az")
+	if err := Refuse(cmd, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := environment(cmd)["BROWSER"]; len(got) != 1 || got[0] != executable {
+		t.Fatalf("refuse BROWSER = %q, want only Bivrost", got)
+	}
+	if err := Interactive(cmd, ""); err != nil {
+		t.Fatal(err)
+	}
+	want := executable + separator + "firefox" + separator + "chromium"
+	if got := environment(cmd)["BROWSER"]; len(got) != 1 || got[0] != want {
+		t.Fatalf("interactive BROWSER = %q, want %q", got, want)
+	}
+}
+
+func TestRunInteractiveWithoutConfigurationDefersToNextBrowser(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", root)
+	t.Setenv("APPDATA", root)
+	signal := filepath.Join(t.TempDir(), "browser-request")
+	t.Setenv(modeVariable, modeInteractive)
+	t.Setenv(signalVariable, signal)
+	var out bytes.Buffer
+	if status := Run([]string{testAddress}, &out); status != 1 {
+		t.Fatalf("Run() = %d, want 1 so webbrowser tries the next browser", status)
+	}
+	if !Requested(signal) || out.Len() != 0 {
+		t.Fatalf("signal = %v, output = %q", Requested(signal), out.String())
 	}
 }

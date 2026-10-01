@@ -206,3 +206,24 @@ func TestLoadAuthenticationBrowserRejectsInvalid(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadInteractiveConnect(t *testing.T) {
+	root := isolateSettings(t)
+	if got, err := LoadInteractiveConnect(); err != nil || !got {
+		t.Fatalf("LoadInteractiveConnect() default = %v, %v; want true", got, err)
+	}
+	for content, want := range map[string]bool{
+		`{"interactive_connect":false}`: false,
+		`{"interactive_connect":true}`:  true,
+		`{"prompt":{"enabled":false}}`:  true,
+	} {
+		writeSettings(t, root, content)
+		if got, err := LoadInteractiveConnect(); err != nil || got != want {
+			t.Errorf("%s: LoadInteractiveConnect() = %v, %v; want %v", content, got, err, want)
+		}
+	}
+	writeSettings(t, root, `{"interactive_connect":"SECRET_MARKER"}`)
+	if _, err := LoadInteractiveConnect(); err == nil || strings.Contains(err.Error(), "SECRET_MARKER") {
+		t.Fatalf("invalid interactive_connect error = %v", err)
+	}
+}

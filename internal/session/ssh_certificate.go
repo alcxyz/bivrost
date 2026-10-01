@@ -15,23 +15,37 @@ import (
 	"github.com/alcxyz/bivrost/internal/diagnostics"
 )
 
-const sshCertificateTimeout = 2 * time.Minute
+// Setup normally completes silently. Once Azure CLI opens a sign-in page, the
+// user gets a longer window to finish multi-factor or Conditional Access steps.
+var (
+	sshCertificateTimeout = 2 * time.Minute
+	sshSignInTimeout      = 5 * time.Minute
+)
 
 // prepareSSHCertificate asks Azure CLI for a short-lived Entra SSH certificate.
 // Azure CLI falls back to browser sign-in for this request when silent token
-// renewal fails. Bivrost refuses that browser request and stops immediately, so
-// connect never starts interactive authentication on its own.
+// renewal fails. Bivrost opens that sign-in in the configured authentication
+// browser and explains the wait, or refuses it when interactive_connect is off.
 func prepareSSHCertificate(ctx context.Context, c profile.Profile, sshConfig, directory string, port int) error {
-	authCtx, cancel := context.WithTimeout(ctx, sshCertificateTimeout)
+	interactive, err := profile.LoadInteractiveConnect()
+	if err != nil {
+		return err
+	}
+	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	// Warnings are kept so a refused sign-in can be classified. They are matched
+	// Warnings are kept so a sign-in request can be explained. They are matched
 	// against known codes and never printed or recorded.
-	cmd, err := azure.Command(authCtx, "ssh", "config", "--ip", "127.0.0.1", "--port", strconv.Itoa(port), "--file", sshConfig, "--keys-destination-folder", directory, "--subscription", c.Subscription)
+	cmd, err := azure.Command(runCtx, "ssh", "config", "--ip", "127.0.0.1", "--port", strconv.Itoa(port), "--file", sshConfig, "--keys-destination-folder", directory, "--subscription", c.Subscription)
 	if err != nil {
 		return err
 	}
 	signal := filepath.Join(directory, "browser-request")
-	if err := authbrowser.Refuse(cmd, signal); err != nil {
+	if interactive {
+		err = authbrowser.Interactive(cmd, signal)
+	} else {
+		err = authbrowser.Refuse(cmd, signal)
+	}
+	if err != nil {
 		return err
 	}
 	stderr := &boundedOutput{limit: 64 * 1024}
@@ -44,8 +58,11 @@ func prepareSSHCertificate(ctx context.Context, c profile.Profile, sshConfig, di
 	}
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
+	deadline := time.NewTimer(sshCertificateTimeout)
+	defer deadline.Stop()
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
+	signingIn := false
 	for {
 		select {
 		case err := <-done:
@@ -55,25 +72,42 @@ func prepareSSHCertificate(ctx context.Context, c profile.Profile, sshConfig, di
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			return sshCertificateError(stderr.Bytes(), authbrowser.Requested(signal), authCtx.Err())
+			if signingIn {
+				return fmt.Errorf("%w: Entra SSH sign-in did not complete; connect again and finish sign-in in the browser, or run bivrost login --ssh first", diagnostics.ErrInteractionRequired)
+			}
+			return sshCertificateError(stderr.Bytes())
+		case <-deadline.C:
+			cancel()
+			<-done
+			if signingIn {
+				return fmt.Errorf("Entra SSH sign-in was not completed within %v; connect again and finish sign-in in the browser: %w", sshSignInTimeout, context.DeadlineExceeded)
+			}
+			return fmt.Errorf("Entra SSH setup timed out; check Azure login and connectivity, then retry: %w", context.DeadlineExceeded)
 		case <-ticker.C:
-			if authbrowser.Requested(signal) {
+			if signingIn || !authbrowser.Requested(signal) {
+				continue
+			}
+			reason := interactionReason(stderr.Bytes())
+			if !interactive {
 				cancel()
 				<-done
-				return sshCertificateError(stderr.Bytes(), true, nil)
+				return fmt.Errorf("%w for the Entra SSH certificate: %s. Bivrost did not open a browser because interactive_connect is off; run bivrost login --ssh, then connect again", diagnostics.ErrInteractionRequired, reason)
 			}
+			signingIn = true
+			deadline.Reset(sshSignInTimeout)
+			fmt.Printf("Azure needs interactive sign-in for the SSH certificate: %s.\nContinue in the browser window; waiting up to %v...\n", reason, sshSignInTimeout)
 		}
 	}
 }
 
-type interactionReason struct {
+type knownInteraction struct {
 	codes  []string
 	reason string
 }
 
 // Microsoft Entra error codes that Azure CLI reports before it falls back to
 // browser sign-in for an SSH certificate.
-var interactionReasons = []interactionReason{
+var interactionReasons = []knownInteraction{
 	{[]string{"AADSTS50076", "AADSTS50079", "AADSTS50074", "AADSTS50078", "AADSTS50158"}, "multi-factor authentication or a Conditional Access step-up is required"},
 	{[]string{"AADSTS53000", "AADSTS53001", "AADSTS53002", "AADSTS53003"}, "a Conditional Access device or app requirement was not met"},
 	{[]string{"AADSTS65001"}, "consent for Azure Linux VM sign-in is required"},
@@ -82,20 +116,16 @@ var interactionReasons = []interactionReason{
 
 var connectivityMarkers = []string{"Failed to establish a new connection", "Max retries exceeded", "ConnectionError", "Name or service not known", "nodename nor servname", "getaddrinfo failed"}
 
-func sshCertificateError(stderr []byte, interactive bool, contextErr error) error {
-	if interactive {
-		reason := "Azure requires fresh interactive sign-in"
-		for _, candidate := range interactionReasons {
-			if containsAny(stderr, candidate.codes) {
-				reason = candidate.reason
-				break
-			}
+func interactionReason(stderr []byte) string {
+	for _, candidate := range interactionReasons {
+		if containsAny(stderr, candidate.codes) {
+			return candidate.reason
 		}
-		return fmt.Errorf("%w for the Entra SSH certificate: %s. Bivrost did not open a browser; run bivrost login --ssh, then connect again", diagnostics.ErrInteractionRequired, reason)
 	}
-	if errors.Is(contextErr, context.DeadlineExceeded) {
-		return fmt.Errorf("Entra SSH setup timed out; check Azure login and connectivity, then retry: %w", contextErr)
-	}
+	return "Azure requires fresh interactive sign-in"
+}
+
+func sshCertificateError(stderr []byte) error {
 	if containsAny(stderr, connectivityMarkers) {
 		return errors.New("Entra SSH setup could not reach Microsoft Entra ID or Azure; check network connectivity and proxy settings, then retry")
 	}

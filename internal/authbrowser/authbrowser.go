@@ -25,7 +25,7 @@ const (
 	modeVariable    = "BIVROST_AUTH_BROWSER"
 	signalVariable  = "BIVROST_AUTH_SIGNAL"
 	modeRefuse      = "refuse"
-	modeLaunch      = "launch"
+	modeInteractive = "interactive"
 )
 
 // Active reports whether Azure CLI started this process to open a sign-in page:
@@ -36,19 +36,22 @@ func Active(args []string) bool {
 }
 
 // Refuse routes browser requests from cmd back to Bivrost, which opens nothing.
-// When signal is not empty, the first refused request creates that file so the
-// caller can stop waiting for a sign-in that will never complete.
+// When signal is not empty, the first request creates that file so the caller
+// can stop waiting for a sign-in that will never complete.
 func Refuse(cmd *exec.Cmd, signal string) error {
 	return route(cmd, modeRefuse, signal)
 }
 
-// Launch routes browser requests from cmd to the configured authentication
-// browser. Callers use it only for explicit sign-in commands.
-func Launch(cmd *exec.Cmd) error {
-	return route(cmd, modeLaunch, "")
+// Interactive lets Azure CLI open sign-in pages from cmd. Bivrost starts the
+// configured authentication browser; without one, webbrowser continues with
+// the user's previous BROWSER value or the system default browser. When signal
+// is not empty, each request creates that file so the caller can explain the
+// wait.
+func Interactive(cmd *exec.Cmd, signal string) error {
+	return route(cmd, modeInteractive, signal)
 }
 
-// Requested reports whether a refused browser request created signal.
+// Requested reports whether a browser request created signal.
 func Requested(signal string) bool {
 	_, err := os.Lstat(signal)
 	return err == nil
@@ -68,13 +71,38 @@ func route(cmd *exec.Cmd, mode, signal string) error {
 	if env == nil {
 		env = os.Environ()
 	}
+	browser := executable
+	if mode == modeInteractive {
+		// webbrowser tries BROWSER entries in order after Bivrost declines.
+		// An earlier route of the same command replaced the user's value.
+		previous := lookup(env, browserVariable)
+		if lookup(env, modeVariable) != "" {
+			previous = os.Getenv(browserVariable)
+		}
+		for _, previous := range strings.Split(previous, string(os.PathListSeparator)) {
+			if previous != "" && previous != executable {
+				browser += string(os.PathListSeparator) + previous
+			}
+		}
+	}
 	env = withoutVariables(env, browserVariable, modeVariable, signalVariable)
-	env = append(env, browserVariable+"="+executable, modeVariable+"="+mode)
+	env = append(env, browserVariable+"="+browser, modeVariable+"="+mode)
 	if signal != "" {
 		env = append(env, signalVariable+"="+signal)
 	}
 	cmd.Env = env
 	return nil
+}
+
+func lookup(env []string, name string) string {
+	value := ""
+	for _, entry := range env {
+		key, entryValue, _ := strings.Cut(entry, "=")
+		if key == name || runtime.GOOS == "windows" && strings.EqualFold(key, name) {
+			value = entryValue
+		}
+	}
+	return value
 }
 
 func withoutVariables(env []string, names ...string) []string {
@@ -95,36 +123,32 @@ func withoutVariables(env []string, names ...string) []string {
 	return result
 }
 
-// Run handles one browser request from Azure CLI. It always returns exit
-// status 0: Python's webbrowser module treats failure as permission to try the
-// operating system default browser, which is exactly what this guard prevents.
-func Run(args []string, stderr io.Writer) int {
+// Run handles one browser request from Azure CLI and returns its exit status.
+// Status 0 tells Python's webbrowser module that a browser opened; any other
+// status makes it try the next BROWSER entry or the system default browser.
+// Messages go to out, which should be the user's terminal: Azure CLI output is
+// captured during connection setup.
+func Run(args []string, out io.Writer) int {
 	address := ""
 	if len(args) == 1 && validAddress(args[0]) {
 		address = args[0]
 	}
-	switch os.Getenv(modeVariable) {
-	case modeLaunch:
-		if address == "" {
-			fmt.Fprintln(stderr, "Bivrost refused an invalid Azure sign-in address.")
-			return 0
-		}
-		launch(address, stderr)
-	default:
-		// Never print or record the address: it carries sign-in request parameters.
-		if signal := os.Getenv(signalVariable); signal != "" {
-			if file, err := os.OpenFile(signal, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600); err == nil {
-				_ = file.Close()
-			}
+	// Never record the address: it carries sign-in request parameters.
+	if signal := os.Getenv(signalVariable); signal != "" {
+		if file, err := os.OpenFile(signal, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600); err == nil {
+			_ = file.Close()
 		}
 	}
-	return 0
-}
-
-func launch(address string, stderr io.Writer) {
+	if os.Getenv(modeVariable) != modeInteractive {
+		return 0
+	}
+	if address == "" {
+		fmt.Fprintln(out, "Bivrost refused an invalid Azure sign-in address.")
+		return 0
+	}
 	browser, err := profile.LoadAuthenticationBrowser()
 	if err == nil && browser == nil {
-		err = errors.New("authentication_browser is not configured")
+		return 1
 	}
 	if err == nil {
 		err = start(*browser, address)
@@ -132,12 +156,13 @@ func launch(address string, stderr io.Writer) {
 	if err != nil {
 		// Azure CLI keeps waiting for the redirect, so a manually opened page
 		// still completes this sign-in. The address is shown only on the terminal.
-		fmt.Fprintf(stderr, "Bivrost could not open the configured authentication browser: %v.\n", err)
-		fmt.Fprintln(stderr, "Open this address in the intended browser profile to continue, or press Ctrl+C and run bivrost login --device-code:")
-		fmt.Fprintln(stderr, address)
-		return
+		fmt.Fprintf(out, "Bivrost could not open the configured authentication browser: %v.\n", err)
+		fmt.Fprintln(out, "Open this address in the intended browser profile to continue:")
+		fmt.Fprintln(out, address)
+		return 0
 	}
-	fmt.Fprintln(stderr, "Opened Azure sign-in in the configured authentication browser.")
+	fmt.Fprintln(out, "Opened Azure sign-in in the configured authentication browser.")
+	return 0
 }
 
 func start(browser profile.AuthenticationBrowser, address string) error {
