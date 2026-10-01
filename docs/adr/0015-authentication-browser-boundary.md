@@ -46,18 +46,27 @@ it try the next `BROWSER` entry and then the system default.
 - **Other Azure CLI commands** (doctor, discovery, Heimdal, tunnels, ACR) always
   use refuse mode. Azure CLI does not fall back to a browser for their token
   requests, so this only enforces that diagnostics stay non-interactive.
-- **`bivrost login`** uses interactive mode when `authentication_browser` is
+- **`bivrost login`** uses interactive mode when an authentication browser is
   configured; otherwise Azure CLI keeps its own browser selection unchanged.
   `--ssh` requests the Azure Linux VM sign-in application scope in advance, and
   `--device-code` remains available where tenants allow it.
-- **`authentication_browser`** names an `executable` and `arguments`; an argument
+- **`authentication_browser`** in `settings.json` names an `executable` and `arguments`; an argument
   exactly `{url}` receives the sign-in address, which is otherwise appended. The
   browser is detached and started directly, never through a shell. Batch files
   are rejected because Windows would run them through `cmd.exe`. If it cannot be
   started, Bivrost writes the sign-in address to the user's terminal for manual
   use and does not fall back to the system default.
+- **Per-organization rules** in `authentication-browsers.d/NAME.json` add
+  `tenants` (IDs or domain names) and `account_domains` to a browser. Bivrost
+  reads the tenant from the sign-in authority path and the account domain from
+  `login_hint`, in memory only, and uses the first matching rule in file-name
+  order before falling back to `authentication_browser`. Azure CLI names the
+  account's tenant for SSH certificate sign-in; `bivrost login` needs `-t` to
+  name one. One file per organization lets separate deployments, such as an
+  organization's onboarding module, contribute rules without sharing a single
+  managed `settings.json`.
 
-Settings live in the user's Bivrost `settings.json` (ADR 0001). Bivrost does not
+Settings live in the user's Bivrost configuration directory (ADR 0001). Bivrost does not
 change operating system browser defaults, Azure CLI configuration or browser
 profiles, and catalogues cannot select a browser.
 

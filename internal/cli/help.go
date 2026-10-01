@@ -164,9 +164,11 @@ SSH certificate needs multi-factor or Conditional Access sign-in,
 connect opens the browser and waits for you to finish. Doctor and
 discovery commands never open a browser.
 
-The authentication_browser setting selects the browser and profile for
-sign-in pages; otherwise your BROWSER setting or the system default is
-used. --ssh signs in for the VM SSH certificate in advance.
+The authentication_browser setting, or a per-organization file in
+authentication-browsers.d matched by tenant, selects the browser and
+profile for sign-in pages; otherwise your BROWSER setting or the system
+default is used. Name the tenant with -t to pick that organization's
+browser. --ssh signs in for the VM SSH certificate in advance.
 This does not sign Azure CLI into the management VM.
 
 Example: bivrost login -t YOUR-TENANT-ID
@@ -177,8 +179,9 @@ Example: bivrost login -t YOUR-TENANT-ID
 Usage: bivrost config init
 
 Settings control the shell prompt and, optionally, the browser and
-profile used for Azure sign-in (authentication_browser) and whether
-connect may open it (interactive_connect).
+profile used for Azure sign-in (authentication_browser, plus files in
+authentication-browsers.d per organization) and whether connect may
+open it (interactive_connect).
 Defaults work without a file. The file uses XDG_CONFIG_HOME when
 set, otherwise the platform's native user configuration directory.
 Environment profiles can come from BIVROST_CATALOGUE_FILE or from
