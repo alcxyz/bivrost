@@ -29,14 +29,15 @@ func TestSelectAuthenticationBrowserMatchesTenantThenDomainThenDefault(t *testin
 		t.Fatalf("HasAuthenticationBrowsers() = %v, %v", configured, err)
 	}
 	writeBrowserRule(t, root, "first.json", `{"tenants":["`+strings.ToUpper(ruleTenant)+`"],"executable":"brave","arguments":["--profile-directory=Profile 5","{url}"]}`)
-	writeBrowserRule(t, root, "second.json", `{"tenants":["other.example"],"account_domains":["Partner.Example"],"executable":"firefox","arguments":["-P","partner"]}`)
+	writeBrowserRule(t, root, "second.json", `{"tenants":["11111111-2222-3333-4444-555555555555"],"account_domains":["Partner.Example"],"executable":"firefox","arguments":["-P","partner"]}`)
+	writeBrowserRule(t, root, "._second.json", "copy artifact")
 	writeBrowserRule(t, root, "README.md", "ignored")
 	writeSettings(t, root, `{"authentication_browser":{"executable":"default-browser"}}`)
 
 	cases := []struct{ tenant, domain, want string }{
 		{ruleTenant, "", "brave"},
 		{"", "partner.example", "firefox"},
-		{"OTHER.example", "", "firefox"},
+		{"11111111-2222-3333-4444-555555555555", "", "firefox"},
 		{"00000000-0000-0000-0000-000000000000", "unknown.example", "default-browser"},
 		{"", "", "default-browser"},
 	}
@@ -76,14 +77,16 @@ func TestAuthenticationBrowserRuleFollowsSymlinks(t *testing.T) {
 
 func TestLoadAuthenticationBrowserRulesRejectsInvalid(t *testing.T) {
 	cases := map[string]string{
-		"Upper.json":    `{"tenants":["example.com"],"executable":"browser"}`,
-		"empty.json":    `{"executable":"browser"}`,
-		"tenant.json":   `{"tenants":["SECRET_MARKER not a tenant"],"executable":"browser"}`,
-		"domain.json":   `{"account_domains":["user@SECRET_MARKER.example"],"executable":"browser"}`,
-		"unknown.json":  `{"tenants":["example.com"],"executable":"browser","SECRET_MARKER":true}`,
-		"browser.json":  `{"tenants":["example.com"],"executable":"SECRET_MARKER.cmd"}`,
-		"trailing.json": `{"tenants":["example.com"],"executable":"browser"} {}`,
-		"array.json":    `[]`,
+		"Upper.json":         `{"account_domains":["example.com"],"executable":"browser"}`,
+		"empty.json":         `{"executable":"browser"}`,
+		"tenant.json":        `{"tenants":["SECRET_MARKER not a tenant"],"executable":"browser"}`,
+		"domain-tenant.json": `{"tenants":["example.com"],"executable":"browser"}`,
+		"domain.json":        `{"account_domains":["user@SECRET_MARKER.example"],"executable":"browser"}`,
+		"unknown.json":       `{"account_domains":["example.com"],"executable":"browser","SECRET_MARKER":true}`,
+		"browser.json":       `{"account_domains":["example.com"],"executable":"SECRET_MARKER.cmd"}`,
+		"trailing.json":      `{"account_domains":["example.com"],"executable":"browser"} {}`,
+		"large.json":         `{"account_domains":["example.com"],"executable":"browser","arguments":["` + strings.Repeat("a", maxSettingsBytes) + `"]}`,
+		"array.json":         `[]`,
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -100,5 +103,26 @@ func TestLoadAuthenticationBrowserRulesRejectsInvalid(t *testing.T) {
 				t.Fatal("HasAuthenticationBrowsers() accepted an invalid rule")
 			}
 		})
+	}
+}
+
+func TestSelectAuthenticationBrowserPrefersTenantOverEarlierDomain(t *testing.T) {
+	root := isolateSettings(t)
+	// A guest account from home.example signs in to the partner tenant.
+	writeBrowserRule(t, root, "a-home.json", `{"account_domains":["home.example"],"executable":"home-browser"}`)
+	writeBrowserRule(t, root, "b-partner.json", `{"tenants":["`+ruleTenant+`"],"executable":"partner-browser"}`)
+	got, err := SelectAuthenticationBrowser(ruleTenant, "home.example")
+	if err != nil || got == nil || got.Executable != "partner-browser" {
+		t.Fatalf("SelectAuthenticationBrowser() = %v, %v; want partner-browser", got, err)
+	}
+}
+
+func TestLoadAuthenticationBrowserRulesRejectsDirectory(t *testing.T) {
+	root := isolateSettings(t)
+	if err := os.MkdirAll(filepath.Join(root, "bivrost", authenticationBrowsersDirectory, "org.json"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadAuthenticationBrowserRules(); err == nil {
+		t.Fatal("LoadAuthenticationBrowserRules() accepted a directory")
 	}
 }

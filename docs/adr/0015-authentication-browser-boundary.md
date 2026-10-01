@@ -57,10 +57,13 @@ it try the next `BROWSER` entry and then the system default.
   started, Bivrost writes the sign-in address to the user's terminal for manual
   use and does not fall back to the system default.
 - **Per-organization rules** in `authentication-browsers.d/NAME.json` add
-  `tenants` (IDs or domain names) and `account_domains` to a browser. Bivrost
-  reads the tenant from the sign-in authority path and the account domain from
-  `login_hint`, in memory only, and uses the first matching rule in file-name
-  order before falling back to `authentication_browser`. Azure CLI names the
+  `tenants` (tenant IDs) and `account_domains` to a browser. Bivrost reads the
+  tenant from the sign-in authority path and the account domain from
+  `login_hint`, in memory only. Entra discovery replaces a tenant domain with
+  its ID in that path, so rules list IDs. A tenant match in any rule wins over an
+  account-domain match, so guest sign-in to another organization opens that
+  organization's browser; ties go to file-name order, before falling back to
+  `authentication_browser`. Hidden files are ignored. Azure CLI names the
   account's tenant for SSH certificate sign-in; `bivrost login` needs `-t` to
   name one. One file per organization lets separate deployments, such as an
   organization's onboarding module, contribute rules without sharing a single

@@ -166,7 +166,7 @@ func Run(args []string, terminal io.Writer) int {
 		// still completes this sign-in. The address is shown only on the terminal.
 		fmt.Fprintf(out, "Bivrost could not open the configured authentication browser: %v.\n", err)
 		if terminal == nil {
-			fmt.Fprintln(out, "No terminal is available to show the sign-in address; fix authentication_browser and sign in again.")
+			fmt.Fprintln(out, "No terminal is available to show the sign-in address; fix the authentication browser settings and sign in again.")
 			return 0
 		}
 		fmt.Fprintln(out, "Open this address in the intended browser profile to continue:")
