@@ -154,7 +154,7 @@ func Run(args []string, terminal io.Writer) int {
 		fmt.Fprintln(out, "Bivrost refused an invalid Azure sign-in address.")
 		return 0
 	}
-	browser, err := profile.LoadAuthenticationBrowser()
+	browser, err := profile.SelectAuthenticationBrowser(signInTarget(address))
 	if err == nil && browser == nil {
 		return 1
 	}
@@ -166,7 +166,7 @@ func Run(args []string, terminal io.Writer) int {
 		// still completes this sign-in. The address is shown only on the terminal.
 		fmt.Fprintf(out, "Bivrost could not open the configured authentication browser: %v.\n", err)
 		if terminal == nil {
-			fmt.Fprintln(out, "No terminal is available to show the sign-in address; fix authentication_browser and sign in again.")
+			fmt.Fprintln(out, "No terminal is available to show the sign-in address; fix the authentication browser settings and sign in again.")
 			return 0
 		}
 		fmt.Fprintln(out, "Open this address in the intended browser profile to continue:")
@@ -194,6 +194,26 @@ func start(browser profile.AuthenticationBrowser, address string) error {
 	}
 	_ = cmd.Process.Release()
 	return nil
+}
+
+// signInTarget returns the Microsoft Entra tenant and account domain named by
+// a sign-in address, when present. Azure CLI requests use the authority
+// https://login.microsoftonline.com/TENANT and, for SSH certificates, a
+// login_hint with the account name.
+func signInTarget(address string) (tenant, accountDomain string) {
+	parsed, err := url.Parse(address)
+	if err != nil {
+		return "", ""
+	}
+	tenant, _, _ = strings.Cut(strings.TrimPrefix(parsed.Path, "/"), "/")
+	switch strings.ToLower(tenant) {
+	case "common", "organizations", "consumers", "adfs":
+		tenant = ""
+	}
+	if hint := parsed.Query().Get("login_hint"); strings.Contains(hint, "@") {
+		accountDomain = hint[strings.LastIndex(hint, "@")+1:]
+	}
+	return tenant, accountDomain
 }
 
 // userEnvironment removes Bivrost's routing from env, keeping the user's own
