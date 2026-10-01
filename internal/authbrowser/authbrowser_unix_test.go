@@ -44,3 +44,50 @@ func TestRunLaunchStartsConfiguredBrowserWithoutShell(t *testing.T) {
 		t.Fatalf("browser arguments = %q, want %q", data, want)
 	}
 }
+
+func TestRunLaunchSelectsBrowserForSignInTenant(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", root)
+	t.Setenv(modeVariable, modeInteractive)
+	rules := filepath.Join(root, "bivrost", "authentication-browsers.d")
+	if err := os.MkdirAll(rules, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"work", "partner"} {
+		browser := filepath.Join(root, name)
+		if err := os.WriteFile(browser, []byte("#!/bin/sh\n: > "+filepath.Join(root, name+".opened")+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(rules, "work.json"), []byte(`{"tenants":["cccccccc-cccc-4ccc-8ccc-cccccccccccc"],"executable":"`+filepath.Join(root, "work")+`"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rules, "partner.json"), []byte(`{"account_domains":["partner.example"],"executable":"`+filepath.Join(root, "partner")+`"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	for _, address := range []string{
+		"https://login.microsoftonline.com/cccccccc-cccc-4ccc-8ccc-cccccccccccc/oauth2/v2.0/authorize?client_id=x",
+		"https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/oauth2/v2.0/authorize?login_hint=a%40partner.example",
+	} {
+		if status := Run([]string{address}, &out); status != 0 {
+			t.Fatalf("Run(%q) = %d, output %q", address, status, out.String())
+		}
+	}
+	for _, name := range []string{"work", "partner"} {
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			if _, err := os.Stat(filepath.Join(root, name+".opened")); err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s browser was not opened", name)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	// An unmatched organization falls through to the user's normal browser.
+	if status := Run([]string{"https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize"}, &out); status != 1 {
+		t.Fatalf("unmatched Run() = %d, want 1", status)
+	}
+}

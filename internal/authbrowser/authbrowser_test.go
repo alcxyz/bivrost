@@ -252,3 +252,18 @@ func TestRunWithoutTerminalNeverShowsAddress(t *testing.T) {
 		t.Fatalf("non-terminal output = %q", data)
 	}
 }
+
+func TestSignInTargetReadsTenantAndAccountDomain(t *testing.T) {
+	cases := []struct{ address, tenant, domain string }{
+		{"https://login.microsoftonline.com/cccccccc-cccc-4ccc-8ccc-cccccccccccc/oauth2/v2.0/authorize?client_id=x&login_hint=first.last%40Example.com", "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "Example.com"},
+		{"https://login.microsoftonline.com/example.com/oauth2/v2.0/authorize?client_id=x", "example.com", ""},
+		{"https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=x", "", ""},
+		{"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?login_hint=nobody", "", ""},
+	}
+	for _, c := range cases {
+		tenant, domain := signInTarget(c.address)
+		if tenant != c.tenant || domain != c.domain {
+			t.Errorf("signInTarget(%q) = %q, %q; want %q, %q", c.address, tenant, domain, c.tenant, c.domain)
+		}
+	}
+}

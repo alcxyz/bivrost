@@ -67,9 +67,47 @@ Examples, as JSON values:
 Find a Chromium profile directory name on its `chrome://version` or
 `edge://version` page.
 
-Without this setting, sign-in during connect uses your `BROWSER` environment
+### Several organizations
+
+To use a different browser or profile per organization, add one file per
+organization to the `authentication-browsers.d` directory beside
+`settings.json`, for example `authentication-browsers.d/example.json`:
+
+```json
+{
+  "tenants": ["00000000-0000-0000-0000-000000000000"],
+  "account_domains": ["example.com"],
+  "executable": "brave",
+  "arguments": ["--profile-directory=Profile 5", "{url}"]
+}
+```
+
+Bivrost reads the Microsoft Entra tenant ID and the account's domain from each
+sign-in request. `tenants` lists tenant IDs; `account_domains` matches the
+domain of the account being signed in. A file needs at least one of them, and
+names must be lowercase `NAME.json`; hidden files are ignored. A tenant match
+in any file wins over an account-domain match, so a guest account signing in to
+another organization opens that organization's browser. Otherwise the first
+matching file in name order applies, then `authentication_browser` from
+`settings.json`, if present. Find a tenant ID with
+`az account show --query tenantId`.
+
+Sign-in during connect always names the tenant of the selected subscription.
+Plain `bivrost login` signs in to no particular tenant, so name it to pick the
+organization's browser; a domain works here, because Azure resolves it to the
+tenant ID:
+
+```text
+bivrost login -t example.com
+```
+
+Configuration managers can write these files independently, one per
+organization; symbolic links to read-only files are accepted.
+
+Without any of these settings, sign-in during connect uses your `BROWSER` environment
 variable if set, otherwise the system default browser, and `bivrost login`
-leaves the choice to Azure CLI. Bivrost never changes the system default
+leaves the choice to Azure CLI. With rule files but no matching rule or
+`authentication_browser`, both use your `BROWSER` setting or the system default. Bivrost never changes the system default
 browser. On Linux, `BROWSER` entries naming `microsoft-edge` are skipped during
 connect, because Azure CLI would open Edge directly without telling Bivrost; use
 `authentication_browser` to choose Edge.

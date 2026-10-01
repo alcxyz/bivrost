@@ -196,7 +196,7 @@ func withPrivateHosts(c profile.Profile, additional []string) (profile.Profile, 
 func localAzureLogin(ctx context.Context, command cli.Command) (resultErr error) {
 	finish := diagnostics.Step(ctx, diagnostics.EventAzureLogin)
 	defer func() { finish(resultErr) }()
-	browser, err := profile.LoadAuthenticationBrowser()
+	configured, err := profile.HasAuthenticationBrowsers()
 	if err != nil {
 		return err
 	}
@@ -204,8 +204,8 @@ func localAzureLogin(ctx context.Context, command cli.Command) (resultErr error)
 	if err != nil {
 		return err
 	}
-	// Without authentication_browser, Azure CLI keeps its normal browser choice.
-	if browser != nil {
+	// Without authentication browsers, Azure CLI keeps its normal browser choice.
+	if configured {
 		if err := authbrowser.Interactive(cmd, ""); err != nil {
 			return err
 		}

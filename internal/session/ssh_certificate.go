@@ -33,6 +33,10 @@ func prepareSSHCertificate(ctx context.Context, c profile.Profile, sshConfig, di
 	if err != nil {
 		return err
 	}
+	// Report invalid browser rules now rather than during sign-in.
+	if _, err := profile.HasAuthenticationBrowsers(); err != nil {
+		return err
+	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	// Warnings are kept so a sign-in request can be explained. They are matched
