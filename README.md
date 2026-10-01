@@ -8,9 +8,11 @@ Forgejo is a mirror. Bivrost is released under the MIT License.
 
 ## What a session does
 
-- Uses your local Azure CLI identity. `bivrost login` opens the normal Azure
-  browser and MFA flow; Bivrost does not create a shared identity or grant
-  access.
+- Uses your local Azure CLI identity. `bivrost login` and, when the SSH
+  certificate needs MFA, `connect` open the Azure browser sign-in, optionally
+  in a configured browser profile. Doctor never opens a browser. Bivrost does
+  not create a shared identity or grant access. See
+  [authentication and browser profiles](docs/authentication.md).
 - Opens a local shell whose private network traffic uses Azure Bastion and SSH.
 - Creates a temporary kubeconfig for `kubectl` when the selected environment
   has Kubernetes details. It is scoped to the child shell and leaves your
@@ -72,6 +74,9 @@ bivrost login
 bivrost doctor -e <environment>
 bivrost connect -e <environment>
 ```
+
+If connect says Azure needs interactive sign-in for the SSH certificate,
+finish it in the browser window that opens; connect then continues.
 
 `bivrost list` shows configured targets, their source, capabilities and PIM
 requirements without signing in or opening a connection. `environments`, `env`
@@ -238,8 +243,8 @@ for package ownership and dependency rules.
 its CI tests and builds snapshots without publishing releases. Promote `dev`
 to protected `main` with a new `VERSION` when preparing a release. The
 promotion check rejects feature branches, unchanged versions and existing tags.
-Squash feature PRs and release promotions, then merge `main` back into `dev`
-after each release promotion.
+Squash feature PRs and merge release promotions with a merge commit, so no
+back-merge into `dev` is needed.
 
 Consumers tracking `main` receive the release line; consumers tracking `dev`
 explicitly opt into unreleased work. Release tags identify immutable published

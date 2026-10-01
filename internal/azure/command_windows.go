@@ -11,8 +11,8 @@ import (
 	"strings"
 )
 
-// Command creates an Azure CLI command without starting it.
-func Command(ctx context.Context, args ...string) (*exec.Cmd, error) {
+// command creates an Azure CLI command without starting it.
+func command(ctx context.Context, args ...string) (*exec.Cmd, error) {
 	path, err := exec.LookPath("az")
 	if err != nil {
 		return nil, err

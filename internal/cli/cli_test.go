@@ -141,16 +141,28 @@ func TestParseLoginAndAzureArguments(t *testing.T) {
 	if command.Kind != Login || command.Tenant != "tenant.example" {
 		t.Fatalf("parseCommand(login) = %+v", command)
 	}
-	if got, want := strings.Join(azure.LoginArguments(command.Tenant), " "), "login --output none --tenant tenant.example"; got != want {
+	if got, want := strings.Join(azure.LoginArguments(command.Tenant, command.DeviceCode, command.SSHLogin), " "), "login --output none --tenant tenant.example"; got != want {
 		t.Fatalf("azure.LoginArguments() = %q, want %q", got, want)
 	}
-	if got := strings.Join(azure.LoginArguments(""), " "); got != "login --output none" {
+	if got := strings.Join(azure.LoginArguments("", false, false), " "); got != "login --output none" {
 		t.Fatalf("azure.LoginArguments(empty) = %q", got)
 	}
-	for _, disallowed := range []string{"--use-device-code", "--env", "--config", "--no-login"} {
-		if strings.Contains(strings.Join(azure.LoginArguments(command.Tenant), " "), disallowed) {
+	for _, disallowed := range []string{"--use-device-code", "--scope", "--env", "--config", "--no-login"} {
+		if strings.Contains(strings.Join(azure.LoginArguments(command.Tenant, command.DeviceCode, command.SSHLogin), " "), disallowed) {
 			t.Errorf("Azure login arguments contain %s", disallowed)
 		}
+	}
+
+	command, err = Parse([]string{"login", "--device-code", "--ssh"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !command.DeviceCode || !command.SSHLogin {
+		t.Fatalf("parseCommand(login --device-code --ssh) = %+v", command)
+	}
+	want := "login --output none --use-device-code --scope " + azure.SSHLoginScope
+	if got := strings.Join(azure.LoginArguments(command.Tenant, command.DeviceCode, command.SSHLogin), " "); got != want {
+		t.Fatalf("azure.LoginArguments(device code, ssh) = %q, want %q", got, want)
 	}
 }
 

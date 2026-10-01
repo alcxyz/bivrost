@@ -61,6 +61,7 @@ func TestDiagnosticsOnlyFixedFields(t *testing.T) {
 		{errors.New("access_token=FAKE-TOKEN password=FAKE-PASSWORD"), "failure"},
 		{fmt.Errorf("FAKE-TOKEN: %w", context.Canceled), "cancelled"},
 		{fmt.Errorf("FAKE-TOKEN: %w", context.DeadlineExceeded), "timeout"},
+		{fmt.Errorf("%w: FAKE-URL https://login.example/?state=FAKE", ErrInteractionRequired), "interaction_required"},
 	}
 	for _, c := range cases {
 		end := Step(ctx, EventAzureLogin)
