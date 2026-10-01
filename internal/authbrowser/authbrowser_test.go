@@ -238,6 +238,9 @@ func TestRunWithoutTerminalNeverShowsAddress(t *testing.T) {
 	os.Stderr = capture
 	status := Run([]string{testAddress}, nil)
 	os.Stderr = previous
+	if err := capture.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if status != 0 {
 		t.Fatalf("Run() = %d, want 0", status)
 	}
