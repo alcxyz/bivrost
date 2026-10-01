@@ -1,0 +1,20 @@
+# Replace every example value before planning. Azure Public only.
+tenant_id       = "00000000-0000-0000-0000-000000000001"
+subscription_id = "00000000-0000-0000-0000-000000000002"
+location        = "norwayeast"
+
+resource_group_name  = "example-existing-rg"
+storage_account_name = "exampleheimdalstore"
+container_name       = "heimdal"
+
+# These are existing resources. The subnet VNet must be in the region above.
+# The zone must be resolvable from publishers and consumers through VNet links
+# or the adopter's DNS forwarding/resolver path.
+private_endpoint_subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000002/resourceGroups/example-network-rg/providers/Microsoft.Network/virtualNetworks/example-vnet/subnets/example-pe-subnet"
+blob_private_dns_zone_id   = "/subscriptions/00000000-0000-0000-0000-000000000002/resourceGroups/example-dns-rg/providers/Microsoft.Network/privateDnsZones/privatelink.blob.core.windows.net"
+
+# Entra object IDs, not application/client IDs. Groups, PIM, and workload
+# federation are owned by the adopter's existing identity workflow.
+consumer_group_object_ids  = ["00000000-0000-0000-0000-000000000003"]
+publisher_group_object_ids = ["00000000-0000-0000-0000-000000000004"]
+ci_principal_object_ids    = ["00000000-0000-0000-0000-000000000005"]
