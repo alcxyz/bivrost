@@ -10,6 +10,12 @@ resource "azapi_resource" "metadata_account" {
   parent_id = local.existing_resource_group_id
   location  = var.location
 
+  # Removal/replacement requires an explicit reviewed change to this guard.
+  # This does not prevent out-of-band Azure deletion or removal of this block.
+  lifecycle {
+    prevent_destroy = true
+  }
+
   body = {
     kind = "StorageV2"
     sku = {

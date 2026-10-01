@@ -19,7 +19,7 @@ variable "subscription_id" {
 }
 
 variable "location" {
-  description = "Azure Public region for the new account and private endpoint."
+  description = "Azure Public region for the new account and private endpoint; must match the existing subnet VNet region."
   type        = string
 }
 
@@ -54,17 +54,17 @@ variable "private_endpoint_subnet_id" {
   type        = string
 
   validation {
-    condition     = can(regex("^/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[^/]+/providers/Microsoft.Network/virtualNetworks/[^/]+/subnets/[^/]+$", var.private_endpoint_subnet_id))
+    condition     = can(regex("(?i)^/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[^/]+/providers/Microsoft\\.Network/virtualNetworks/[^/]+/subnets/[^/]+$", var.private_endpoint_subnet_id))
     error_message = "private_endpoint_subnet_id must be a full Azure subnet resource ID."
   }
 }
 
 variable "blob_private_dns_zone_id" {
-  description = "ID of an existing privatelink.blob.core.windows.net private DNS zone. Its VNet link must already exist."
+  description = "ID of an existing privatelink.blob.core.windows.net private DNS zone. Its resolution path for publishers and consumers must already exist."
   type        = string
 
   validation {
-    condition     = can(regex("^/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[^/]+/providers/Microsoft.Network/privateDnsZones/privatelink\\.blob\\.core\\.windows\\.net$", var.blob_private_dns_zone_id))
+    condition     = can(regex("(?i)^/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[^/]+/providers/Microsoft\\.Network/privateDnsZones/privatelink\\.blob\\.core\\.windows\\.net$", var.blob_private_dns_zone_id))
     error_message = "blob_private_dns_zone_id must identify a privatelink.blob.core.windows.net zone."
   }
 }

@@ -26,7 +26,10 @@ connectivity or authorization and requires plan review.
 The example disables anonymous access, Shared Key authorization and public
 network access. It uses a Blob private endpoint, TLS 1.2 minimum and Blob
 versioning/soft delete. Retention is a recovery aid, not protection against a
-privileged administrator. It is separate from metadata's application expiry.
+privileged administrator. It is separate from metadata's application expiry. Blob recovery does not protect
+against deleting the whole account. The example uses `prevent_destroy` to block
+planned account replacement/deletion; removing the resource block or deleting
+outside IaC bypasses that guard.
 
 This is a private-network reference, not a requirement that every adopter use
 this topology. A public-endpoint variant needs an explicit design and review;
@@ -50,9 +53,10 @@ flowchart TD
 ```
 
 Clients use the ordinary `<account>.blob.core.windows.net` name. The adopter's
-DNS and routing must resolve/reach its private endpoint from the management VM
-and the publishing runner. Creating a private endpoint alone does not establish
-all VNet links, forwarding or cross-network routes. See
+DNS and routing must resolve/reach its private endpoint from the management VM, publishing runner and any direct consumers. Creating a private endpoint alone does not establish
+all VNet links, forwarding or cross-network routes. The selected region must
+match the existing subnet VNet region. Policy-managed DNS zone associations
+require adaptation to avoid competing ownership. See
 [Azure Storage private endpoints](https://learn.microsoft.com/en-us/azure/storage/common/storage-private-endpoints).
 
 ## State before storage

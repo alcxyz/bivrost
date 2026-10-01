@@ -7,7 +7,7 @@ This is a reference configuration, not output from an implemented
 ## Prerequisites
 
 - Existing resource group, private endpoint subnet and Blob private DNS zone in
-  the metadata subscription.
+  the metadata subscription. The subnet VNet must be in the selected region.
 - Working DNS links/forwarding and routes for the publisher and consumer path.
 - Existing consumer groups, separately governed publisher groups and CI principals.
 - Explicit Azure tenant/subscription and an appropriately authorized deployment identity.
@@ -62,6 +62,16 @@ renewal schedule. Review retention, region and redundancy against your needs.
 
 ## Static validation recorded
 
-Terraform and OpenTofu formatting and configuration validation passed with
+Terraform 1.16.4 and OpenTofu 1.12.6 formatting and configuration validation passed with
 AzAPI 2.13.0 and AzureRM 5.7.0. Each engine used provider initialization with
 `-backend=false`; no live plan or apply was performed.
+
+Account replacement/deletion is guarded by `prevent_destroy`; an intentional
+teardown needs a reviewed change to that guard. Removing the resource block or
+deleting the account outside IaC bypasses it. Blob recovery features do not
+protect against account deletion. Where Azure Policy owns DNS zone associations,
+adapt the example to avoid competing ownership.
+
+The supplied `.gitignore` protects this public example. Downstream repositories
+should choose their own policy for reviewed, non-secret input files; keep state,
+plans and credentials excluded regardless.

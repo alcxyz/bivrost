@@ -7,8 +7,9 @@ resource_group_name  = "example-existing-rg"
 storage_account_name = "exampleheimdalstore"
 container_name       = "heimdal"
 
-# These are existing resources. The private DNS zone must already be linked to
-# the VNet containing the private endpoint subnet and the consumer network.
+# These are existing resources. The subnet VNet must be in the region above.
+# The zone must be resolvable from publishers and consumers through VNet links
+# or the adopter's DNS forwarding/resolver path.
 private_endpoint_subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000002/resourceGroups/example-network-rg/providers/Microsoft.Network/virtualNetworks/example-vnet/subnets/example-pe-subnet"
 blob_private_dns_zone_id   = "/subscriptions/00000000-0000-0000-0000-000000000002/resourceGroups/example-dns-rg/providers/Microsoft.Network/privateDnsZones/privatelink.blob.core.windows.net"
 
