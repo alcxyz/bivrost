@@ -93,13 +93,21 @@ matching file in name order applies, then `authentication_browser` from
 `az account show --query tenantId`.
 
 Sign-in during connect always names the tenant of the selected subscription.
-Plain `bivrost login` signs in to no particular tenant, so name it to pick the
+`bivrost login` without `-t` signs in to a default tenant when the rules name
+one: the file with `"login_default": true`, or else the only file, when it lists
+exactly one tenant. Bivrost says which file it used. A `login_default` file must
+list exactly one tenant, and at most one file may set it. Without a default,
+plain `bivrost login` signs in to no particular tenant, so name it to pick the
 organization's browser; a domain works here, because Azure resolves it to the
 tenant ID:
 
 ```text
 bivrost login -t example.com
 ```
+
+`-t` always overrides the default. To sign in without naming any tenant, for
+example to discover subscriptions in every tenant your account can reach, run
+`az login` directly; Bivrost reuses that sign-in.
 
 Configuration managers can write these files independently, one per
 organization; symbolic links to read-only files are accepted.
