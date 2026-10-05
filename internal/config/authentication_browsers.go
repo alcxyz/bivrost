@@ -71,6 +71,15 @@ func LoadAuthenticationBrowserRules() ([]AuthenticationBrowserRule, error) {
 		rule.Name = name
 		rules = append(rules, rule)
 	}
+	defaults := 0
+	for _, rule := range rules {
+		if rule.LoginDefault {
+			defaults++
+		}
+	}
+	if defaults > 1 {
+		return nil, errors.New("only one authentication-browsers.d rule may set login_default")
+	}
 	return rules, nil
 }
 
@@ -136,24 +145,19 @@ func ValidateAuthenticationBrowserRule(rule AuthenticationBrowserRule) error {
 // DefaultLoginTenant returns the tenant that bivrost login uses without -t, and
 // the name of the rule that supplies it. The rule marked login_default wins;
 // otherwise a single rule naming a single tenant is the default. Both results
-// are empty when no rule determines a default.
+// are empty when no rule determines a default. Loading rejects more than one
+// login_default rule.
 func DefaultLoginTenant() (tenant, rule string, err error) {
 	rules, err := LoadAuthenticationBrowserRules()
 	if err != nil {
 		return "", "", err
 	}
-	var marked []AuthenticationBrowserRule
 	for _, r := range rules {
 		if r.LoginDefault {
-			marked = append(marked, r)
+			return r.Tenants[0], r.Name, nil
 		}
 	}
-	switch {
-	case len(marked) > 1:
-		return "", "", errors.New("only one authentication-browsers.d rule may set login_default")
-	case len(marked) == 1:
-		return marked[0].Tenants[0], marked[0].Name, nil
-	case len(rules) == 1 && len(rules[0].Tenants) == 1:
+	if len(rules) == 1 && len(rules[0].Tenants) == 1 {
 		return rules[0].Tenants[0], rules[0].Name, nil
 	}
 	return "", "", nil

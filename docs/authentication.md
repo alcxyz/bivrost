@@ -105,7 +105,9 @@ tenant ID:
 bivrost login -t example.com
 ```
 
-`-t` always overrides the default.
+`-t` always overrides the default. To sign in without naming any tenant, for
+example to discover subscriptions in every tenant your account can reach, run
+`az login` directly; Bivrost reuses that sign-in.
 
 Configuration managers can write these files independently, one per
 organization; symbolic links to read-only files are accepted.

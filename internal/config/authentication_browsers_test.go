@@ -171,6 +171,10 @@ func TestDefaultLoginTenant(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), c.wantErrContains) {
 					t.Fatalf("DefaultLoginTenant() error = %v; want %q", err, c.wantErrContains)
 				}
+				// Every command that reads rules reports the conflict.
+				if _, err := HasAuthenticationBrowsers(); err == nil {
+					t.Fatal("HasAuthenticationBrowsers() accepted two login_default rules")
+				}
 				return
 			}
 			if err != nil || tenant != c.tenant || rule != c.rule {

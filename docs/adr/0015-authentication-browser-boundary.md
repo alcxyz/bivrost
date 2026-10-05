@@ -68,7 +68,8 @@ it try the next `BROWSER` entry and then the system default.
   names the tenant of the rule marked `login_default`, or of the only rule when
   it lists exactly one tenant, and says which file supplied it; otherwise it
   names none. A `login_default` rule lists exactly one tenant, and at most one
-  rule sets it. `-t` always wins. One file per organization lets separate deployments, such as an
+  rule sets it. `-t` always wins; `az login` itself remains available to sign in
+  without naming a tenant. One file per organization lets separate deployments, such as an
   organization's onboarding module, contribute rules without sharing a single
   managed `settings.json`.
 
