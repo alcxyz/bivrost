@@ -91,12 +91,20 @@ func openBastion(ctx context.Context, c profile.Profile) (_ *bastionSession, res
 	if err != nil {
 		return nil, err
 	}
+	tunnelErrors := azure.NewTunnelErrors()
+	cmd.Stderr = tunnelErrors
 	fmt.Println("Opening the Bastion tunnel...")
 	s.process, err = startChild(cmd)
 	if err != nil {
 		return nil, errors.New("could not start Azure Bastion tunnel")
 	}
 	if err := waitPort(ctx, profile.Loopback(s.port), s.process); err != nil {
+		select {
+		case <-s.process.done:
+			// Wait has returned, so Azure CLI's stderr is fully copied.
+			return nil, tunnelErrors.Err()
+		default:
+		}
 		return nil, err
 	}
 	complete = true

@@ -104,6 +104,27 @@ func TestOpenBastionCleansSessionAfterTunnelStartFailure(t *testing.T) {
 	assertNoSessionDirectories(t, stateRoot)
 }
 
+func TestOpenBastionExplainsTunnelFailureWithoutAzureOutput(t *testing.T) {
+	toolDirectory := t.TempDir()
+	writeTestExecutable(t, filepath.Join(toolDirectory, "az"), "#!/bin/sh\n"+
+		"echo \"ERROR: (AuthorizationFailed) The client 'SECRET_MARKER@example.com' does not have authorization\" >&2\n"+
+		"exit 1\n")
+	writeTestExecutable(t, filepath.Join(toolDirectory, "ssh"), "#!/bin/sh\nexit 0\n")
+	stateRoot := prepareOpenBastionTest(t, toolDirectory)
+	c := validSessionConfig()
+	c.SSHUser = "azureuser"
+	c.IdentityFile = filepath.Join(t.TempDir(), "id_ed25519")
+
+	_, err := openBastion(context.Background(), c)
+	if err == nil || !strings.Contains(err.Error(), "AuthorizationFailed") || !strings.Contains(err.Error(), "PIM") {
+		t.Fatalf("openBastion() error = %v, want authorization guidance", err)
+	}
+	if strings.Contains(err.Error(), "SECRET_MARKER") {
+		t.Fatalf("openBastion() exposed Azure CLI output: %v", err)
+	}
+	assertNoSessionDirectories(t, stateRoot)
+}
+
 func TestRunConnectCleansDetachedProcessesAndSessionOnHangup(t *testing.T) {
 	toolDirectory := t.TempDir()
 	markerDirectory := t.TempDir()
