@@ -104,7 +104,7 @@ func openBastion(ctx context.Context, c profile.Profile) (_ *bastionSession, res
 	if err := waitPort(ctx, profile.Loopback(s.port), s.process); err != nil {
 		// Cancellation also ends the tunnel; report it, not the tunnel's exit.
 		if ctx.Err() != nil {
-			return nil, err
+			return nil, ctx.Err()
 		}
 		select {
 		case <-s.process.done:
