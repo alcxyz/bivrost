@@ -50,4 +50,11 @@ func TestTunnelErrorsKeepsBoundedSample(t *testing.T) {
 	if strings.Contains(errors.Err().Error(), "AuthorizationFailed") {
 		t.Fatal("Err() classified output beyond the sample bound")
 	}
+
+	// A recognised marker before the bound is not trusted once output was cut off.
+	truncated := NewTunnelErrors()
+	_, _ = truncated.Write([]byte("AuthorizationFailed " + strings.Repeat("x", tunnelErrorSampleBytes)))
+	if got := truncated.Err().Error(); !strings.Contains(got, "exited before it was ready") {
+		t.Fatalf("Err() for truncated output = %q; want generic guidance", got)
+	}
 }

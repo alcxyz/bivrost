@@ -44,9 +44,13 @@ var tunnelFailures = []tunnelFailure{
 }
 
 // Err explains why a Bastion tunnel exited before it became ready, from the
-// recognised errors in its stderr sample.
+// recognised errors in its stderr sample. A truncated sample may have lost the
+// final error, so it is treated as unrecognised.
 func (t *TunnelErrors) Err() error {
 	data := t.sample.data.Bytes()
+	if t.sample.exceeded {
+		data = nil
+	}
 	for _, failure := range tunnelFailures {
 		for _, marker := range failure.markers {
 			if bytes.Contains(data, []byte(marker)) {
@@ -54,5 +58,5 @@ func (t *TunnelErrors) Err() error {
 			}
 		}
 	}
-	return errors.New("Azure Bastion tunnel exited before it was ready; check your Azure access and PIM activation for this environment, then run bivrost doctor")
+	return errors.New("Azure Bastion tunnel exited before it was ready; check your Azure access and PIM activation for this environment, and run bivrost doctor with the same --env or --config")
 }

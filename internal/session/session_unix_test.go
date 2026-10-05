@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
 	"os/exec"
@@ -121,6 +122,30 @@ func TestOpenBastionExplainsTunnelFailureWithoutAzureOutput(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "SECRET_MARKER") {
 		t.Fatalf("openBastion() exposed Azure CLI output: %v", err)
+	}
+	assertNoSessionDirectories(t, stateRoot)
+}
+
+func TestOpenBastionReportsCancellationNotTunnelExit(t *testing.T) {
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skip("sleep is unavailable")
+	}
+	toolDirectory := t.TempDir()
+	writeTestExecutable(t, filepath.Join(toolDirectory, "az"), "#!/bin/sh\n"+
+		"echo 'ERROR: (AuthorizationFailed) late' >&2\n"+
+		"exec "+sleep+" 30\n")
+	writeTestExecutable(t, filepath.Join(toolDirectory, "ssh"), "#!/bin/sh\nexit 0\n")
+	stateRoot := prepareOpenBastionTest(t, toolDirectory)
+	c := validSessionConfig()
+	c.SSHUser = "azureuser"
+	c.IdentityFile = filepath.Join(t.TempDir(), "id_ed25519")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(300*time.Millisecond, cancel)
+	_, err = openBastion(ctx, c)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("openBastion() error = %v, want context.Canceled", err)
 	}
 	assertNoSessionDirectories(t, stateRoot)
 }
