@@ -77,16 +77,18 @@ func TestAuthenticationBrowserRuleFollowsSymlinks(t *testing.T) {
 
 func TestLoadAuthenticationBrowserRulesRejectsInvalid(t *testing.T) {
 	cases := map[string]string{
-		"Upper.json":         `{"account_domains":["example.com"],"executable":"browser"}`,
-		"empty.json":         `{"executable":"browser"}`,
-		"tenant.json":        `{"tenants":["SECRET_MARKER not a tenant"],"executable":"browser"}`,
-		"domain-tenant.json": `{"tenants":["example.com"],"executable":"browser"}`,
-		"domain.json":        `{"account_domains":["user@SECRET_MARKER.example"],"executable":"browser"}`,
-		"unknown.json":       `{"account_domains":["example.com"],"executable":"browser","SECRET_MARKER":true}`,
-		"browser.json":       `{"account_domains":["example.com"],"executable":"SECRET_MARKER.cmd"}`,
-		"trailing.json":      `{"account_domains":["example.com"],"executable":"browser"} {}`,
-		"large.json":         `{"account_domains":["example.com"],"executable":"browser","arguments":["` + strings.Repeat("a", maxSettingsBytes) + `"]}`,
-		"array.json":         `[]`,
+		"Upper.json":           `{"account_domains":["example.com"],"executable":"browser"}`,
+		"empty.json":           `{"executable":"browser"}`,
+		"tenant.json":          `{"tenants":["SECRET_MARKER not a tenant"],"executable":"browser"}`,
+		"domain-tenant.json":   `{"tenants":["example.com"],"executable":"browser"}`,
+		"domain.json":          `{"account_domains":["user@SECRET_MARKER.example"],"executable":"browser"}`,
+		"unknown.json":         `{"account_domains":["example.com"],"executable":"browser","SECRET_MARKER":true}`,
+		"browser.json":         `{"account_domains":["example.com"],"executable":"SECRET_MARKER.cmd"}`,
+		"trailing.json":        `{"account_domains":["example.com"],"executable":"browser"} {}`,
+		"large.json":           `{"account_domains":["example.com"],"executable":"browser","arguments":["` + strings.Repeat("a", maxSettingsBytes) + `"]}`,
+		"array.json":           `[]`,
+		"default-domain.json":  `{"account_domains":["example.com"],"login_default":true,"executable":"browser"}`,
+		"default-tenants.json": `{"tenants":["` + ruleTenant + `","11111111-2222-3333-4444-555555555555"],"login_default":true,"executable":"browser"}`,
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -124,5 +126,56 @@ func TestLoadAuthenticationBrowserRulesRejectsDirectory(t *testing.T) {
 	}
 	if _, err := LoadAuthenticationBrowserRules(); err == nil {
 		t.Fatal("LoadAuthenticationBrowserRules() accepted a directory")
+	}
+}
+
+func TestDefaultLoginTenant(t *testing.T) {
+	const other = "11111111-2222-3333-4444-555555555555"
+	cases := []struct {
+		name            string
+		rules           map[string]string
+		tenant, rule    string
+		wantErrContains string
+	}{
+		{name: "no rules"},
+		{name: "single rule and tenant", rules: map[string]string{
+			"home.json": `{"tenants":["` + ruleTenant + `"],"executable":"brave"}`,
+		}, tenant: ruleTenant, rule: "home"},
+		{name: "single rule with several tenants", rules: map[string]string{
+			"home.json": `{"tenants":["` + ruleTenant + `","` + other + `"],"executable":"brave"}`,
+		}},
+		{name: "single domain rule", rules: map[string]string{
+			"home.json": `{"account_domains":["example.com"],"executable":"brave"}`,
+		}},
+		{name: "several rules without a default", rules: map[string]string{
+			"home.json":    `{"tenants":["` + ruleTenant + `"],"executable":"brave"}`,
+			"partner.json": `{"tenants":["` + other + `"],"executable":"firefox"}`,
+		}},
+		{name: "marked rule among several", rules: map[string]string{
+			"a-home.json":  `{"tenants":["` + ruleTenant + `"],"executable":"brave"}`,
+			"partner.json": `{"tenants":["` + other + `"],"login_default":true,"executable":"firefox"}`,
+		}, tenant: other, rule: "partner"},
+		{name: "several marked rules", rules: map[string]string{
+			"home.json":    `{"tenants":["` + ruleTenant + `"],"login_default":true,"executable":"brave"}`,
+			"partner.json": `{"tenants":["` + other + `"],"login_default":true,"executable":"firefox"}`,
+		}, wantErrContains: "only one"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := isolateSettings(t)
+			for name, content := range c.rules {
+				writeBrowserRule(t, root, name, content)
+			}
+			tenant, rule, err := DefaultLoginTenant()
+			if c.wantErrContains != "" {
+				if err == nil || !strings.Contains(err.Error(), c.wantErrContains) {
+					t.Fatalf("DefaultLoginTenant() error = %v; want %q", err, c.wantErrContains)
+				}
+				return
+			}
+			if err != nil || tenant != c.tenant || rule != c.rule {
+				t.Fatalf("DefaultLoginTenant() = %q, %q, %v; want %q, %q", tenant, rule, err, c.tenant, c.rule)
+			}
+		})
 	}
 }

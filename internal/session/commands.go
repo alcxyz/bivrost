@@ -200,7 +200,18 @@ func localAzureLogin(ctx context.Context, command cli.Command) (resultErr error)
 	if err != nil {
 		return err
 	}
-	cmd, err := azure.InteractiveCommand(ctx, azure.LoginArguments(command.Tenant, command.DeviceCode, command.SSHLogin)...)
+	tenant := command.Tenant
+	if tenant == "" {
+		var rule string
+		tenant, rule, err = profile.DefaultLoginTenant()
+		if err != nil {
+			return err
+		}
+		if rule != "" {
+			fmt.Printf("Signing in to the tenant from authentication-browsers.d/%s.json; use -t to choose another.\n", rule)
+		}
+	}
+	cmd, err := azure.InteractiveCommand(ctx, azure.LoginArguments(tenant, command.DeviceCode, command.SSHLogin)...)
 	if err != nil {
 		return err
 	}

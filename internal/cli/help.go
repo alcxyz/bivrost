@@ -167,8 +167,10 @@ discovery commands never open a browser.
 The authentication_browser setting, or a per-organization file in
 authentication-browsers.d matched by tenant ID or account domain,
 selects the browser and profile for sign-in pages; otherwise your
-BROWSER setting or the system default is used. Name the tenant with -t
-to pick that organization's browser. --ssh signs in for the VM SSH certificate in advance.
+BROWSER setting or the system default is used. Without -t, login uses
+the rule marked login_default, or the only rule when it names a single
+tenant, so that organization's browser opens; otherwise name the tenant
+with -t. --ssh signs in for the VM SSH certificate in advance.
 This does not sign Azure CLI into the management VM.
 
 Example: bivrost login -t YOUR-TENANT-ID

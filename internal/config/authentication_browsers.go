@@ -19,6 +19,7 @@ type AuthenticationBrowserRule struct {
 	Name           string   `json:"-"`
 	Tenants        []string `json:"tenants"`
 	AccountDomains []string `json:"account_domains"`
+	LoginDefault   bool     `json:"login_default"`
 	AuthenticationBrowser
 }
 
@@ -126,7 +127,36 @@ func ValidateAuthenticationBrowserRule(rule AuthenticationBrowserRule) error {
 			return errors.New("account_domains must be domain names such as example.com")
 		}
 	}
+	if rule.LoginDefault && len(rule.Tenants) != 1 {
+		return errors.New("login_default needs exactly one tenant")
+	}
 	return ValidateAuthenticationBrowser(rule.AuthenticationBrowser)
+}
+
+// DefaultLoginTenant returns the tenant that bivrost login uses without -t, and
+// the name of the rule that supplies it. The rule marked login_default wins;
+// otherwise a single rule naming a single tenant is the default. Both results
+// are empty when no rule determines a default.
+func DefaultLoginTenant() (tenant, rule string, err error) {
+	rules, err := LoadAuthenticationBrowserRules()
+	if err != nil {
+		return "", "", err
+	}
+	var marked []AuthenticationBrowserRule
+	for _, r := range rules {
+		if r.LoginDefault {
+			marked = append(marked, r)
+		}
+	}
+	switch {
+	case len(marked) > 1:
+		return "", "", errors.New("only one authentication-browsers.d rule may set login_default")
+	case len(marked) == 1:
+		return marked[0].Tenants[0], marked[0].Name, nil
+	case len(rules) == 1 && len(rules[0].Tenants) == 1:
+		return rules[0].Tenants[0], rules[0].Name, nil
+	}
+	return "", "", nil
 }
 
 // SelectAuthenticationBrowser returns the browser for a sign-in to tenant by an

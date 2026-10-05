@@ -64,8 +64,11 @@ it try the next `BROWSER` entry and then the system default.
   account-domain match, so guest sign-in to another organization opens that
   organization's browser; ties go to file-name order, before falling back to
   `authentication_browser`. Hidden files are ignored. Azure CLI names the
-  account's tenant for SSH certificate sign-in; `bivrost login` needs `-t` to
-  name one. One file per organization lets separate deployments, such as an
+  account's tenant for SSH certificate sign-in. `bivrost login` without `-t`
+  names the tenant of the rule marked `login_default`, or of the only rule when
+  it lists exactly one tenant, and says which file supplied it; otherwise it
+  names none. A `login_default` rule lists exactly one tenant, and at most one
+  rule sets it. `-t` always wins. One file per organization lets separate deployments, such as an
   organization's onboarding module, contribute rules without sharing a single
   managed `settings.json`.
 
