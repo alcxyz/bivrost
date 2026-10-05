@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/alcxyz/bivrost/internal/azure"
 	profile "github.com/alcxyz/bivrost/internal/config"
@@ -91,12 +92,26 @@ func openBastion(ctx context.Context, c profile.Profile) (_ *bastionSession, res
 	if err != nil {
 		return nil, err
 	}
+	tunnelErrors := azure.NewTunnelErrors()
+	cmd.Stderr = tunnelErrors
+	// Stderr is a pipe, so a descendant holding it open must not block Wait.
+	cmd.WaitDelay = 5 * time.Second
 	fmt.Println("Opening the Bastion tunnel...")
 	s.process, err = startChild(cmd)
 	if err != nil {
 		return nil, errors.New("could not start Azure Bastion tunnel")
 	}
 	if err := waitPort(ctx, profile.Loopback(s.port), s.process); err != nil {
+		// Cancellation also ends the tunnel; report it, not the tunnel's exit.
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		select {
+		case <-s.process.done:
+			// Wait has returned, so Azure CLI's stderr is fully copied.
+			return nil, tunnelErrors.Err()
+		default:
+		}
 		return nil, err
 	}
 	complete = true
