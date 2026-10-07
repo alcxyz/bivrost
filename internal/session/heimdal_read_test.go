@@ -74,3 +74,59 @@ func TestFetchHeimdalRoutesValidatesBeforeReturningRoutes(t *testing.T) {
 		})
 	}
 }
+
+// heimdalTestReaders serves a fixed pointer and revision without Azure.
+func heimdalTestReaders(pointer, document []byte) (func(context.Context, string, []string) (string, error), func(context.Context, azure.TerraformBackend, string, string, string, []string, int) ([]byte, error)) {
+	endpointFor := func(context.Context, string, []string) (string, error) {
+		return "https://examplemetadata.blob.core.windows.net", nil
+	}
+	read := func(_ context.Context, _ azure.TerraformBackend, _, blob, _ string, _ []string, _ int) ([]byte, error) {
+		if strings.HasSuffix(blob, "/current.json") {
+			return pointer, nil
+		}
+		return document, nil
+	}
+	return endpointFor, read
+}
+
+func TestFetchHeimdalRoutesEnforcesAllowedRouteSuffixes(t *testing.T) {
+	routes := []string{"db.private.example.net", "state.example.net"}
+	doc, pointer, _, err := heimdal.Create("example", routes, time.Now().Add(-time.Minute), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpointFor, read := heimdalTestReaders(pointer, doc)
+	for _, test := range []struct {
+		name     string
+		suffixes []string
+		wantOK   bool
+	}{
+		{"absent list", nil, true},
+		{"common parent", []string{"example.net"}, true},
+		{"exact route and parent", []string{"state.example.net", "private.example.net"}, true},
+		{"one route outside", []string{"private.example.net"}, false},
+		{"suffix without label boundary", []string{"ate.example.net", "private.example.net"}, false},
+		{"unrelated suffix", []string{"other.example"}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := profile.Profile{ProxyPort: 18080, Heimdal: &profile.HeimdalSource{Subscription: "metadata-sub", Account: "examplemetadata", Environment: "example", AllowedRouteSuffixes: test.suffixes}}
+			hosts, err := fetchHeimdalRoutesWith(context.Background(), c, endpointFor, read)
+			if (err == nil) != test.wantOK {
+				t.Fatalf("error = %v, want success %v", err, test.wantOK)
+			}
+			if test.wantOK && !reflect.DeepEqual(hosts, routes) {
+				t.Fatalf("routes = %v, want %v", hosts, routes)
+			}
+			if !test.wantOK {
+				if len(hosts) != 0 {
+					t.Fatal("rejected revision exposed partial routes")
+				}
+				for _, route := range routes {
+					if strings.Contains(err.Error(), route) {
+						t.Fatalf("validation error names a metadata route: %v", err)
+					}
+				}
+			}
+		})
+	}
+}

@@ -424,3 +424,193 @@ func TestUnpublishClearsSuspendedIntent(t *testing.T) {
 		t.Fatal("unpublish failed to clear suspended intent")
 	}
 }
+
+func writePublicationDescriptor(t *testing.T, root, name, host string) string {
+	t.Helper()
+	path := filepath.Join(root, name)
+	proxyURL := "http://bivrost:" + strings.Repeat("a", 64) + "@" + host
+	data := fmt.Sprintf(`{"bivrost-publication":1,"clusters":[{"name":"c","cluster":{"proxy-url":%q}}]}`, proxyURL)
+	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// silentGateway accepts probe connections and never answers them, like a live
+// but unresponsive owner. Accepted connections are delivered on the channel.
+func silentGateway(t *testing.T) (string, <-chan net.Conn) {
+	t.Helper()
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted := make(chan net.Conn, 16)
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			accepted <- conn
+		}
+	}()
+	t.Cleanup(func() {
+		ln.Close()
+		for {
+			select {
+			case conn := <-accepted:
+				conn.Close()
+			default:
+				return
+			}
+		}
+	})
+	return ln.Addr().String(), accepted
+}
+
+func closedLoopbackAddress(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := ln.Addr().String()
+	ln.Close()
+	return address
+}
+
+func TestPublishProbesStalePublicationsWithoutSessionLock(t *testing.T) {
+	a, _ := publicationFixture(t)
+	root, err := publicationRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	address, accepted := silentGateway(t)
+	unclear := writePublicationDescriptor(t, root, "bivrost-unclear.json", address)
+
+	type result struct {
+		path string
+		err  error
+	}
+	published := make(chan result, 1)
+	go func() {
+		path, err := a.publish()
+		published <- result{path, err}
+	}()
+	var probe net.Conn
+	select {
+	case probe = <-accepted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("publish did not probe the existing descriptor")
+	}
+
+	// Another controller request needs the session lock while the probe waits.
+	answered := make(chan int, 1)
+	go func() {
+		w := httptest.NewRecorder()
+		a.handlePublication(w, httptest.NewRequest("POST", "/publication-path", nil))
+		answered <- w.Code
+	}()
+	select {
+	case code := <-answered:
+		if code != http.StatusConflict {
+			t.Fatalf("publication path status = %d, want not yet published", code)
+		}
+	case <-time.After(publicationProbeResponseTimeout / 2):
+		t.Fatal("controller request waited for the stale-publication probe")
+	}
+	select {
+	case <-published:
+		t.Fatal("publish finished before its probe was answered")
+	default:
+	}
+
+	probe.Close()
+	got := <-published
+	if got.err != nil || got.path == "" {
+		t.Fatalf("publish() = %q, %v", got.path, got.err)
+	}
+	if _, err := os.Stat(unclear); err != nil {
+		t.Fatal("removed a descriptor whose owner was not conclusively gone")
+	}
+}
+
+func TestUnpublishDuringCleanupPreventsLaterPublication(t *testing.T) {
+	a, _ := publicationFixture(t)
+	root, err := publicationRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	address, accepted := silentGateway(t)
+	writePublicationDescriptor(t, root, "bivrost-unclear.json", address)
+
+	published := make(chan error, 1)
+	go func() {
+		_, err := a.publish()
+		published <- err
+	}()
+	var probe net.Conn
+	select {
+	case probe = <-accepted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("publish did not probe the existing descriptor")
+	}
+	w := httptest.NewRecorder()
+	a.handlePublication(w, httptest.NewRequest("POST", "/unpublish", nil))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("unpublish status = %d", w.Code)
+	}
+	probe.Close()
+	if err := <-published; err == nil {
+		t.Fatal("publish succeeded after sharing was withdrawn")
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.publication != nil || a.publicationRequested {
+		t.Fatal("withdrawn sharing was reinstated")
+	}
+}
+
+func TestCleanPublicationProbesConcurrently(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	root, err := publicationRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	address, accepted := silentGateway(t)
+	const unanswered = 3
+	var kept, removed []string
+	for i := range unanswered {
+		kept = append(kept, writePublicationDescriptor(t, root, fmt.Sprintf("bivrost-silent-%d.json", i), address))
+		removed = append(removed, writePublicationDescriptor(t, root, fmt.Sprintf("bivrost-closed-%d.json", i), closedLoopbackAddress(t)))
+	}
+	done := make(chan error, 1)
+	go func() { done <- cleanPublications(context.Background()) }()
+	// Sequential probing would reach the next silent owner only after the
+	// previous probe's response timeout.
+	var probes []net.Conn
+	for range unanswered {
+		select {
+		case conn := <-accepted:
+			probes = append(probes, conn)
+		case <-time.After(publicationProbeResponseTimeout / 2):
+			t.Fatal("stale publications were not probed concurrently")
+		}
+	}
+	for _, conn := range probes {
+		conn.Close()
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range kept {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("removed unanswered descriptor %s", filepath.Base(path))
+		}
+	}
+	for _, path := range removed {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("kept descriptor %s whose port refuses connections", filepath.Base(path))
+		}
+	}
+}

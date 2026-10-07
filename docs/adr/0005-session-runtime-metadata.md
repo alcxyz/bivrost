@@ -101,8 +101,19 @@ through the startup proxy using Entra Blob authorization. Refuse redirects,
 bound response sizes and timeouts, and validate exact field names, unique keys,
 environment, digest, routes and validity before installing anything.
 
+The publisher is trusted, but its route scope is still bounded. No route, local
+or downloaded, may name a Microsoft sign-in, management or Graph endpoint in the
+public, US Government or China clouds, or any host below one. A local bootstrap may also set
+`allowed_route_suffixes`; every downloaded route must then equal a listed
+suffix or lie below one at a label boundary, or the whole revision fails
+validation, subject to the normal fallback rule below. Local and command-line
+routes are not subject to that list, and without it (or with `null`) any
+otherwise valid route is accepted.
+
 Only after successful validation, replace the startup router with one combining
 bootstrap and metadata routes, before shell, controller and ACR activation.
+The replacement happens in place on the running proxy listener, so its port is
+never released and rebound; tunnels opened through the startup routes close.
 No active-shell refresh is provided. Metadata expiry is checked at acquisition;
 it does not stop an established session or revoke provider access. Every new
 connection or managed switch fetches again. Responses stay in memory; nothing

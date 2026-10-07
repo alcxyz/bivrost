@@ -42,10 +42,42 @@ func upstreamProxy() (*url.URL, error) {
 
 type runningProxy struct {
 	server   *http.Server
-	router   *proxy.Router
 	done     <-chan error
+	upstream *url.URL
 	bridgeMu sync.RWMutex
 	bridge   *podmanProxyBridge
+
+	routesMu sync.RWMutex
+	config   profile.Profile
+	router   *proxy.Router
+}
+
+func (p *runningProxy) currentRoutes() (*proxy.Router, profile.Profile) {
+	p.routesMu.RLock()
+	defer p.routesMu.RUnlock()
+	return p.router, p.config
+}
+
+// replaceRoutes installs c's private routes on the running listener, so the
+// proxy URL already given to the session never changes. Callers do this only
+// before any shell, registry activation or controller starts; an active
+// session's routes are never changed. Tunnels opened through the previous
+// routes are closed.
+func (p *runningProxy) replaceRoutes(c profile.Profile) error {
+	if err := c.ValidatePrivateHosts(); err != nil {
+		return err
+	}
+	p.routesMu.Lock()
+	if c.Registry != p.config.Registry || c.ProxyPort != p.config.ProxyPort || c.SOCKSPort != p.config.SOCKSPort {
+		p.routesMu.Unlock()
+		return errors.New("replacement routes must keep the proxy's registry and ports")
+	}
+	previous := p.router
+	p.router = proxy.NewRouter(proxy.Config{Registry: c.Registry, PrivateHosts: append([]string(nil), c.PrivateHosts...), SOCKSAddress: profile.Loopback(c.SOCKSPort), DirectProxy: p.upstream})
+	p.config = c
+	p.routesMu.Unlock()
+	previous.Close()
+	return nil
 }
 
 // Publish the capability only after SSH confirms the VM forward is allocated.
@@ -71,7 +103,8 @@ func (p *runningProxy) podmanBridgeID() string {
 
 func (p *runningProxy) close() {
 	_ = p.server.Close()
-	p.router.Close()
+	router, _ := p.currentRoutes()
+	router.Close()
 }
 
 func startProxy(ctx context.Context, c profile.Profile) (_ *runningProxy, resultErr error) {
@@ -96,8 +129,9 @@ func startProxy(ctx context.Context, c profile.Profile) (_ *runningProxy, result
 	}
 	router := proxy.NewRouter(proxy.Config{Registry: c.Registry, PrivateHosts: append([]string(nil), c.PrivateHosts...), SOCKSAddress: profile.Loopback(c.SOCKSPort), DirectProxy: upstream})
 	server := &http.Server{ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024, ErrorLog: log.New(io.Discard, "", 0), BaseContext: func(net.Listener) context.Context { return ctx }}
-	p := &runningProxy{server: server, router: router}
+	p := &runningProxy{server: server, upstream: upstream, config: c, router: router}
 	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		router, current := p.currentRoutes()
 		if r.Method == http.MethodGet && r.URL.Path == "/bivrost/health" && !r.URL.IsAbs() {
 			w.Header().Set("Content-Type", "text/plain")
 			if ctx.Err() == nil {
@@ -105,7 +139,7 @@ func startProxy(ctx context.Context, c profile.Profile) (_ *runningProxy, result
 					w.Header().Set("Bivrost-Podman-Bridge", id)
 				}
 			}
-			fmt.Fprint(w, c.ProxyID())
+			fmt.Fprint(w, current.ProxyID())
 			return
 		}
 		router.ServeHTTP(w, r)

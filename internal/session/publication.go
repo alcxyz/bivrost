@@ -64,16 +64,15 @@ func publicationRoot() (string, error) {
 }
 
 func (a *acrActivation) publish() (string, error) {
+	// Probing stale descriptors can take seconds, so it runs without the session
+	// lock and does not delay status, switch or unpublish requests. The session
+	// state is checked again once the lock is held.
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.ctx.Err() != nil || a.pending != nil {
-		return "", errors.New("session ended or switch pending")
-	}
-	if a.publication != nil {
-		return a.publication.path, nil
-	}
-	if a.kubernetesUnavailable || a.config.AKS == nil || a.kubeconfig == "" {
-		return "", errors.New("this session has no available Kubernetes target")
+	path, err := a.publicationStateLocked()
+	withdrawals := a.withdrawals
+	a.mu.Unlock()
+	if path != "" || err != nil {
+		return path, err
 	}
 	root, err := publicationRoot()
 	if err != nil {
@@ -81,6 +80,14 @@ func (a *acrActivation) publish() (string, error) {
 	}
 	if err = cleanPublicationDirectory(a.ctx, root); err != nil {
 		return "", err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if path, err = a.publicationStateLocked(); path != "" || err != nil {
+		return path, err
+	}
+	if a.withdrawals != withdrawals {
+		return "", errors.New("session sharing was withdrawn while the publication was prepared")
 	}
 	input, err := os.ReadFile(a.kubeconfig)
 	if err != nil || len(input) > maxKubeconfigJSONSize {
@@ -135,6 +142,21 @@ func (a *acrActivation) publish() (string, error) {
 	a.publication = p
 	a.publicationRequested = true
 	return p.path, nil
+}
+
+// publicationStateLocked returns the existing publication's path, or an error
+// when this session cannot publish. Both are empty when publishing may proceed.
+func (a *acrActivation) publicationStateLocked() (string, error) {
+	if a.ctx.Err() != nil || a.pending != nil {
+		return "", errors.New("session ended or switch pending")
+	}
+	if a.publication != nil {
+		return a.publication.path, nil
+	}
+	if a.kubernetesUnavailable || a.config.AKS == nil || a.kubeconfig == "" {
+		return "", errors.New("this session has no available Kubernetes target")
+	}
+	return "", nil
 }
 
 func publicationKubeconfig(input []byte, environment, id, target, proxyURL string) ([]byte, string, error) {
@@ -334,6 +356,7 @@ func (a *acrActivation) handlePublication(w http.ResponseWriter, r *http.Request
 	}
 	if r.URL.Path == "/unpublish" {
 		a.publicationRequested = false
+		a.withdrawals++
 		if a.publication != nil {
 			a.publication.close()
 			a.publication = nil
@@ -385,14 +408,29 @@ func cleanPublications(ctx context.Context) error {
 	}
 	return cleanPublicationDirectory(ctx, root)
 }
+
+// A loopback dial is normally accepted or refused at once, but Windows retries
+// a refused connection and may take about two seconds to report it. The dial
+// timeout stays well above that so a closed port is recognised as stale rather
+// than ambiguous. A live gateway answers /health immediately, so the response
+// timeout is shorter. Probes run concurrently, so many stale descriptors cost
+// about one probe period per batch.
+const (
+	publicationProbeDialTimeout     = 5 * time.Second
+	publicationProbeResponseTimeout = 2 * time.Second
+	publicationProbeConcurrency     = 8
+)
+
+type publicationProbe struct {
+	path, host, authorization string
+}
+
 func cleanPublicationDirectory(ctx context.Context, root string) error {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return errors.New("cannot inspect publications")
 	}
-	transport := &http.Transport{Proxy: nil}
-	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, Timeout: time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirect rejected") }}
+	var probes []publicationProbe
 	for _, entry := range entries {
 		if !strings.HasPrefix(entry.Name(), "bivrost-") || !entry.Type().IsRegular() {
 			continue
@@ -437,25 +475,53 @@ func cleanPublicationDirectory(ctx context.Context, root string) error {
 			continue
 		}
 		auth := "Basic " + base64.StdEncoding.EncodeToString([]byte("bivrost:"+password))
-		req, err := http.NewRequestWithContext(ctx, "GET", "http://"+u.Host+"/health", nil)
-		if err != nil {
+		probes = append(probes, publicationProbe{path: path, host: u.Host, authorization: auth})
+	}
+
+	transport := &http.Transport{
+		Proxy:                 nil,
+		DialContext:           (&net.Dialer{Timeout: publicationProbeDialTimeout}).DialContext,
+		ResponseHeaderTimeout: publicationProbeResponseTimeout,
+		DisableKeepAlives:     true,
+	}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirect rejected") }}
+	gone := make([]bool, len(probes))
+	limit := make(chan struct{}, publicationProbeConcurrency)
+	var wg sync.WaitGroup
+	for i, probe := range probes {
+		limit <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-limit }()
+			gone[i] = publicationOwnerGone(ctx, client, probe)
+		})
+	}
+	wg.Wait()
+	for i, probe := range probes {
+		if !gone[i] {
 			continue
 		}
-		req.Header.Set("Proxy-Authorization", auth)
-		response, err := client.Do(req)
-		stale := false
-		if err != nil {
-			var op *net.OpError
-			stale = errors.As(err, &op) && op.Op == "dial" && !op.Timeout() && ctx.Err() == nil
-		} else {
-			response.Body.Close()
-			stale = response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusGone
-		}
-		if stale {
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-				return errors.New("cannot remove stale publication")
-			}
+		if err := os.Remove(probe.path); err != nil && !os.IsNotExist(err) {
+			return errors.New("cannot remove stale publication")
 		}
 	}
 	return ctx.Err()
+}
+
+// publicationOwnerGone reports whether the descriptor's gateway conclusively
+// no longer exists: its port refuses connections, or a different owner rejects
+// the capability. Timeouts and other failures are ambiguous.
+func publicationOwnerGone(ctx context.Context, client *http.Client, probe publicationProbe) bool {
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://"+probe.host+"/health", nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Proxy-Authorization", probe.authorization)
+	response, err := client.Do(req)
+	if err != nil {
+		var op *net.OpError
+		return errors.As(err, &op) && op.Op == "dial" && !op.Timeout() && ctx.Err() == nil
+	}
+	response.Body.Close()
+	return response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusGone
 }
