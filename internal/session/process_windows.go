@@ -5,6 +5,7 @@ package session
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -38,7 +39,7 @@ func prepareInteractiveShell(cmd *exec.Cmd) { prepareInteractive(cmd) }
 func prepareRunCommand(cmd *exec.Cmd, _ bool) func() {
 	cmd.WaitDelay = 10 * time.Second
 	cmd.Cancel = func() error {
-		tree := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid))
+		tree := exec.Command(systemTool("taskkill.exe"), "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid))
 		if tree.Run() != nil {
 			return cmd.Process.Kill()
 		}
@@ -51,3 +52,12 @@ func prepareRunCommand(cmd *exec.Cmd, _ bool) func() {
 func terminalForeground() bool { return true }
 
 func signalExitCode(*exec.ExitError) int { return RunFailureExitCode }
+
+// systemTool locates a Windows system utility without depending on PATH.
+func systemTool(name string) string {
+	root := os.Getenv("SystemRoot")
+	if root == "" || !filepath.IsAbs(root) {
+		root = `C:\Windows`
+	}
+	return filepath.Join(root, "System32", name)
+}
