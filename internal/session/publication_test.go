@@ -84,6 +84,16 @@ func TestPublicationLifecycleAndIsolation(t *testing.T) {
 	if tlsName != "cluster.example.test" {
 		t.Fatal("changed TLS identity")
 	}
+	proxyString, _ := rawString(cluster["proxy-url"])
+	proxyURL, err := url.Parse(proxyString)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, _ := proxyURL.User.Password()
+	id := strings.TrimPrefix(name, "bivrost/test/")
+	if len(id) != 16 || len(token) != 64 || strings.Contains(token, id) || strings.Contains(server, token[:16]) {
+		t.Fatal("publication identifier reveals part of the gateway capability")
+	}
 	_, user, err := namedKubeObject(doc["users"], name, "user")
 	if err != nil {
 		t.Fatal(err)

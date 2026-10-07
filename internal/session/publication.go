@@ -91,12 +91,18 @@ func (a *acrActivation) publish() (string, error) {
 		return "", errors.New("cannot create publication capability")
 	}
 	token := hex.EncodeToString(secret)
+	// The ID appears in names and the gateway hostname, so it must not reveal
+	// any part of the capability.
+	idBytes := make([]byte, 8)
+	if _, err = rand.Read(idBytes); err != nil {
+		return "", errors.New("cannot create publication identifier")
+	}
+	id := hex.EncodeToString(idBytes)
 	ln, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return "", errors.New("cannot open publication transport")
 	}
 	proxyURL := &url.URL{Scheme: "http", Host: ln.Addr().String(), User: url.UserPassword("bivrost", token)}
-	id := token[:16]
 	target := "bivrost-" + id + ".invalid:443"
 	data, upstream, err := publicationKubeconfig(input, a.config.Environment, id, target, proxyURL.String())
 	if err != nil {
