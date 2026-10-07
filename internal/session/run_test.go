@@ -72,8 +72,8 @@ func newRunTestSession(t *testing.T, command func(s *runTestSession) *platformPr
 			t.Fatal("startShell called for a run command")
 			return nil, nil
 		},
-		startCommand: func(_ context.Context, name string, args, env []string) (*platformProcess, error) {
-			s.name, s.args, s.env = name, append([]string(nil), args...), append([]string(nil), env...)
+		startCommand: func(_ context.Context, started *sessionCommand, env []string) (*platformProcess, error) {
+			s.name, s.args, s.env = started.argv[0], append([]string(nil), started.argv[1:]...), append([]string(nil), env...)
 			return command(s), nil
 		},
 		waitForward: func(context.Context, string, *platformProcess) error { return nil },
@@ -107,7 +107,7 @@ func TestRunCommandUsesIsolatedSessionWithoutShellOrController(t *testing.T) {
 	c.AKS = &profile.AKS{Name: "cluster", ResourceGroup: "rg", Subscription: "sub"}
 	var running atomic.Bool
 	argv := []string{"kubectl", "get", "pods", "-n", "app"}
-	if err := platformSession(context.Background(), c, &running, s.services, false, argv); err != nil {
+	if err := platformSession(context.Background(), c, &running, s.services, false, &sessionCommand{argv: argv}); err != nil {
 		t.Fatalf("platformSession() error = %v", err)
 	}
 	if s.name != "kubectl" || !reflect.DeepEqual(s.args, argv[1:]) {
@@ -136,7 +136,7 @@ func TestRunCommandReportsCommandFailureAsItsOwnStatus(t *testing.T) {
 	commandErr := errors.New("not an exit status")
 	s := newRunTestSession(t, func(*runTestSession) *platformProcess { return finishedProcess(commandErr) })
 	var running atomic.Bool
-	err := runFailure(platformSession(context.Background(), platformTestConfig(t), &running, s.services, false, []string{"tool"}))
+	err := runFailure(platformSession(context.Background(), platformTestConfig(t), &running, s.services, false, &sessionCommand{argv: []string{"tool"}}))
 	var exit *ExitError
 	if !errors.As(err, &exit) || exit.Code != RunFailureExitCode || !errors.Is(err, commandErr) {
 		t.Fatalf("error = %v, want Bivrost failure wrapping the wait error", err)
@@ -156,7 +156,7 @@ func TestRunCommandStopsCommandWhenBastionDisconnects(t *testing.T) {
 		}
 	})
 	var running atomic.Bool
-	err := runFailure(platformSession(context.Background(), platformTestConfig(t), &running, s.services, false, []string{"tool"}))
+	err := runFailure(platformSession(context.Background(), platformTestConfig(t), &running, s.services, false, &sessionCommand{argv: []string{"tool"}}))
 	var exit *ExitError
 	if !errors.As(err, &exit) || exit.Code != RunFailureExitCode || !strings.Contains(err.Error(), "Bastion disconnected") {
 		t.Fatalf("error = %v, want Bastion disconnect with status %d", err, RunFailureExitCode)
@@ -181,13 +181,59 @@ func TestRunCommandCancellationStopsCommandAndCleansUp(t *testing.T) {
 		}
 	})
 	var running atomic.Bool
-	err := runFailure(platformSession(ctx, platformTestConfig(t), &running, s.services, false, []string{"tool"}))
+	err := runFailure(platformSession(ctx, platformTestConfig(t), &running, s.services, false, &sessionCommand{argv: []string{"tool"}}))
 	var exit *ExitError
 	if !errors.As(err, &exit) || exit.Code != RunFailureExitCode || !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want cancellation with status %d", err, RunFailureExitCode)
 	}
 	if !s.commandStopped.Load() {
 		t.Error("command was not stopped")
+	}
+	s.assertCleanedUp(t)
+}
+
+func TestRunCommandTerminationKeepsTunnelsUntilCommandStops(t *testing.T) {
+	terminate := make(chan struct{})
+	commandDone := make(chan struct{})
+	var stopOnce sync.Once
+	var tunnelsUpAtStop atomic.Bool
+	s := newRunTestSession(t, nil)
+	s.services.startCommand = func(_ context.Context, _ *sessionCommand, _ []string) (*platformProcess, error) {
+		close(terminate)
+		return &platformProcess{
+			done: commandDone,
+			err:  func() error { return nil },
+			stop: func() {
+				tunnelsUpAtStop.Store(!s.sshStopped.Load() && !s.bastionClosed.Load() && !s.proxyClosed.Load())
+				s.commandStopped.Store(true)
+				stopOnce.Do(func() { close(commandDone) })
+			},
+		}, nil
+	}
+	var running atomic.Bool
+	err := runFailure(platformSession(context.Background(), platformTestConfig(t), &running, s.services, false, &sessionCommand{argv: []string{"tool"}, terminate: terminate}))
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != RunFailureExitCode || !strings.Contains(err.Error(), "terminated") {
+		t.Fatalf("error = %v, want termination with status %d", err, RunFailureExitCode)
+	}
+	if !s.commandStopped.Load() || !tunnelsUpAtStop.Load() {
+		t.Errorf("command stopped = %v, tunnels up while stopping = %v; want both", s.commandStopped.Load(), tunnelsUpAtStop.Load())
+	}
+	s.assertCleanedUp(t)
+}
+
+func TestRunCommandTerminatedDuringSetupDoesNotStart(t *testing.T) {
+	terminate := make(chan struct{})
+	close(terminate)
+	s := newRunTestSession(t, func(*runTestSession) *platformProcess {
+		t.Fatal("command started after termination")
+		return nil
+	})
+	var running atomic.Bool
+	err := runFailure(platformSession(context.Background(), platformTestConfig(t), &running, s.services, false, &sessionCommand{argv: []string{"tool"}, terminate: terminate}))
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != RunFailureExitCode {
+		t.Fatalf("error = %v, want status %d", err, RunFailureExitCode)
 	}
 	s.assertCleanedUp(t)
 }
@@ -202,7 +248,7 @@ func TestRunCommandRejectsNestedSession(t *testing.T) {
 		},
 	}
 	var running atomic.Bool
-	err := runFailure(platformSession(context.Background(), profile.Profile{}, &running, services, false, []string{"tool"}))
+	err := runFailure(platformSession(context.Background(), profile.Profile{}, &running, services, false, &sessionCommand{argv: []string{"tool"}}))
 	var exit *ExitError
 	if !errors.As(err, &exit) || exit.Code != RunFailureExitCode || !strings.Contains(err.Error(), "already active") {
 		t.Fatalf("error = %v, want nested-session failure", err)

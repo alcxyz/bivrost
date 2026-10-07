@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"syscall"
 	"time"
+	"unsafe"
 )
 
 func terminationSignals(includeInterrupt bool) []os.Signal {
@@ -34,11 +35,31 @@ func prepareInteractiveShell(cmd *exec.Cmd) {
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGHUP) }
 }
 
-// A run command shares Bivrost's process group, so terminal Ctrl+C reaches it
-// directly. Cancellation asks it to finish before session cleanup proceeds.
-func prepareRunCommand(cmd *exec.Cmd) {
-	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
+// prepareRunCommand lets cancellation ask the command to finish before the
+// session closes. In its own process group, the request and the final cleanup
+// reach its descendants too; the returned function stops any left behind.
+func prepareRunCommand(cmd *exec.Cmd, ownGroup bool) func() {
 	cmd.WaitDelay = 10 * time.Second
+	if !ownGroup {
+		cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
+		return func() {}
+	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) }
+	return func() { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+}
+
+// terminalForeground reports whether Bivrost is the foreground job of its
+// controlling terminal, which then delivers Ctrl+C to Bivrost's process group.
+func terminalForeground() bool {
+	tty, err := os.Open("/dev/tty")
+	if err != nil {
+		return false
+	}
+	defer tty.Close()
+	var group int32
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, tty.Fd(), uintptr(syscall.TIOCGPGRP), uintptr(unsafe.Pointer(&group)))
+	return errno == 0 && int(group) == syscall.Getpgrp()
 }
 
 func signalExitCode(err *exec.ExitError) int {

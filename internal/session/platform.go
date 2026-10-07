@@ -61,7 +61,7 @@ type platformServices struct {
 	prepareKubeconfig func(context.Context, profile.Profile, string, int) (kubeTarget, error)
 	startSSH          func(context.Context, []string) (*platformProcess, error)
 	startShell        func(context.Context, string, []string, []string) (*platformProcess, error)
-	startCommand      func(context.Context, string, []string, []string) (*platformProcess, error)
+	startCommand      func(context.Context, *sessionCommand, []string) (*platformProcess, error)
 	waitForward       func(context.Context, string, *platformProcess) error
 }
 
@@ -114,7 +114,7 @@ func platformConnectLoop(ctx context.Context, c profile.Profile, shellRunning *a
 		published = reconnect.published
 		c = reconnect.config
 		if c.RequiresPIM {
-			fmt.Println("This environment requires PIM activation. Activate your eligible access before connecting; this tool does not grant or activate permissions.")
+			fmt.Fprintln(os.Stderr, "This environment requires PIM activation. Activate your eligible access before connecting; this tool does not grant or activate permissions.")
 		}
 	}
 }
@@ -127,12 +127,12 @@ func platformConnectWithPublication(ctx context.Context, c profile.Profile, shel
 	return platformSession(ctx, c, shellRunning, services, resumePublication, nil)
 }
 
-// platformSession owns one session's resources. With argv, it runs that command
-// in place of the interactive shell: no prompt, controller or banner, and
-// progress goes to stderr so the command's stdout stays its own.
-func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomic.Bool, services platformServices, resumePublication bool, argv []string) error {
+// platformSession owns one session's resources. With a command, it runs that
+// command in place of the interactive shell: no prompt, controller or banner,
+// and progress goes to stderr so the command's stdout stays its own.
+func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomic.Bool, services platformServices, resumePublication bool, command *sessionCommand) error {
 	defer func() { diagnostics.Event(ctx, diagnostics.EventCleanup) }()
-	runCommand := len(argv) > 0
+	runCommand := command != nil
 	var out io.Writer = os.Stdout
 	if runCommand {
 		out = os.Stderr
@@ -264,7 +264,7 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 	var shellName string
 	var shellArgs []string
 	if runCommand {
-		shellName, shellArgs = argv[0], argv[1:]
+		shellName, shellArgs = command.argv[0], command.argv[1:]
 	} else {
 		shellName, shellArgs, err = services.selectShell()
 		if err != nil {
@@ -284,7 +284,7 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 		shellEnv = activation.session.environment(shellEnv)
 	}
 	if runCommand {
-		return runSessionCommand(ctx, shellRunning, services, shellName, shellArgs, shellEnv, kubeUnavailable, activation, proxy, ssh, bastion)
+		return runSessionCommand(ctx, shellRunning, services, command, shellEnv, kubeUnavailable, activation, proxy, ssh, bastion)
 	}
 	shellEnv, err = activation.listen(shellEnv)
 	if err != nil {

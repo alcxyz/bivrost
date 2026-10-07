@@ -23,7 +23,9 @@ Provide `bivrost run (-e NAME | -c PATH) [--acr [-n]] [--private-host HOST]
   rejected, as for `connect`.
 - **Execution.** COMMAND is executed directly, never through a shell, so its
   arguments reach it verbatim. Shell syntax requires an explicit `sh -c` or
-  `pwsh -Command`. The command name is resolved before any tunnel is opened.
+  `pwsh -Command`. The name is looked up in the session's `PATH`, as a shell
+  would, so session additions such as the Podman wrapper apply. It is also
+  checked before any tunnel is opened.
 - **Inheritance.** The command receives the session environment used by the
   interactive shell (`HTTPS_PROXY`, `NO_PROXY`, `KUBECONFIG`,
   `BIVROST_SESSION` and, with `--acr`, the Podman settings). It does not
@@ -38,14 +40,19 @@ Provide `bivrost run (-e NAME | -c PATH) [--acr [-n]] [--private-host HOST]
   setup, lost session, termination before the command finished), 126 when the
   command cannot be executed and 127 when it is not found. A command ended by
   a signal yields 128 plus the signal number.
-- **Interrupts and cleanup.** Ctrl+C cancels setup. Once the command runs it
-  shares Bivrost's process group and receives terminal interrupts directly;
-  Bivrost does not forward a second copy, which could escalate tools such as
-  Terraform. SIGTERM or SIGHUP sent to Bivrost is passed to the command as
-  SIGTERM (terminated on Windows), which has 10 seconds to exit. If a tunnel,
-  proxy or registry session fails while the command runs, the command is
-  stopped the same way. All session resources are then cleaned up as for
-  `connect`.
+- **Interrupts and cleanup.** Ctrl+C cancels setup. When Bivrost is the
+  terminal's foreground job, the command shares its process group so it can
+  read the terminal and receive Ctrl+C directly; Bivrost does not forward a
+  second copy, which could escalate tools such as Terraform. Otherwise, as in
+  CI and agent runs, the command gets its own process group. SIGTERM or SIGHUP
+  sent to Bivrost, or SIGINT outside the foreground, asks the command to stop:
+  Unix sends SIGTERM to the command, or to its whole group when it has one,
+  and Windows terminates the command. The session's
+  tunnels and proxy stay up while the command shuts down, for at most 10
+  seconds, so it can save state or release locks. If a tunnel, proxy or
+  registry session fails while the command runs, the command is stopped the
+  same way. When the command exits, any processes left in its own group are
+  killed. All session resources are then cleaned up as for `connect`.
 
 ## Consequences
 
