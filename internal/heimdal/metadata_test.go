@@ -30,12 +30,15 @@ func TestRevisionRoundtripAndRejection(t *testing.T) {
 		{append(append([]byte{}, data...), ' '), "example", revision, now},
 		{data, "another", revision, now},
 		{data, "example", revision, now.Add(DefaultValidity)},
-		{data, "example", revision, now.Add(-time.Second)},
+		{data, "example", revision, now.Add(-MaxClockSkew - time.Second)},
 	}
 	for _, c := range cases {
 		if _, err := Decode(c.data, c.env, c.rev, c.now); err == nil {
 			t.Fatal("accepted invalid immutable metadata")
 		}
+	}
+	if _, err := Decode(data, "example", revision, now.Add(-MaxClockSkew)); err != nil {
+		t.Fatalf("rejected metadata issued within the allowed clock skew: %v", err)
 	}
 	bad := bytes.Replace(data, []byte(`"schema_version":1`), []byte(`"schema_version":1,"hook":"do-something"`), 1)
 	digest := sha256.Sum256(bad)
