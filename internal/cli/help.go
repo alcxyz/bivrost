@@ -96,8 +96,8 @@ In another terminal, use k9s --kubeconfig PATH with the published path.
 Plain k9s there does not automatically discover published sessions.
 Freelens/Lens can discover them when configured to watch the publication
 directory. Bivrost does not change client settings or your normal kubeconfig.
-kubelogin uses your local
-Azure CLI identity. Publishing does not grant additional permissions.
+kubelogin uses your local Azure CLI identity. Publishing does not grant
+additional permissions.
 
 Publications live under $XDG_RUNTIME_DIR/bivrost/published, or
 ${XDG_STATE_HOME:-$HOME/.local/state}/bivrost/published when unset.
