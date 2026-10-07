@@ -2,6 +2,7 @@ package cli
 
 import (
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -92,6 +93,45 @@ func TestNoLoginOnlyAcceptedByACRConnect(t *testing.T) {
 	}
 }
 
+func TestPrivateHostOptionsAreRepeatableAndSessionScoped(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{
+		{"connect", "--env", "dev", "--private-host", "one.example", "--private-host=two.example"},
+		{"acr", "connect", "--env", "dev", "--private-host", "one.example", "--private-host=two.example"},
+		{"switch", "--env", "dev", "--private-host", "one.example", "--private-host=two.example"},
+	} {
+		command, err := Parse(args)
+		if err != nil {
+			t.Fatalf("parseCommand(%q): %v", args, err)
+		}
+		if got := strings.Join(command.PrivateHosts, ","); got != "one.example,two.example" {
+			t.Fatalf("parseCommand(%q) private hosts = %q", args, got)
+		}
+	}
+
+	for _, args := range [][]string{
+		{"ssh", "--env", "dev", "--private-host", "one.example"},
+		{"doctor", "--env", "dev", "--private-host", "one.example"},
+		{"acr", "proxy", "--env", "dev", "--private-host", "one.example"},
+	} {
+		if _, err := Parse(args); err == nil {
+			t.Errorf("parseCommand(%q) accepted --private-host", args)
+		}
+	}
+}
+
+func TestPrivateHostOptionsRejectUnsafeTargets(t *testing.T) {
+	t.Parallel()
+	for _, host := range []string{
+		"*.example", "https://one.example", "127.0.0.1", "one.example:443",
+		"management.azure.com", "login.microsoftonline.com", "UPPER.example",
+	} {
+		if _, err := Parse([]string{"connect", "--env", "dev", "--private-host", host}); err == nil {
+			t.Errorf("parseCommand() accepted invalid private host %q", host)
+		}
+	}
+}
+
 func TestParseLoginAndAzureArguments(t *testing.T) {
 	t.Parallel()
 	command, err := Parse([]string{"login", "--tenant", "tenant.example"})
@@ -101,16 +141,28 @@ func TestParseLoginAndAzureArguments(t *testing.T) {
 	if command.Kind != Login || command.Tenant != "tenant.example" {
 		t.Fatalf("parseCommand(login) = %+v", command)
 	}
-	if got, want := strings.Join(azure.LoginArguments(command.Tenant), " "), "login --output none --tenant tenant.example"; got != want {
+	if got, want := strings.Join(azure.LoginArguments(command.Tenant, command.DeviceCode, command.SSHLogin), " "), "login --output none --tenant tenant.example"; got != want {
 		t.Fatalf("azure.LoginArguments() = %q, want %q", got, want)
 	}
-	if got := strings.Join(azure.LoginArguments(""), " "); got != "login --output none" {
+	if got := strings.Join(azure.LoginArguments("", false, false), " "); got != "login --output none" {
 		t.Fatalf("azure.LoginArguments(empty) = %q", got)
 	}
-	for _, disallowed := range []string{"--use-device-code", "--env", "--config", "--no-login"} {
-		if strings.Contains(strings.Join(azure.LoginArguments(command.Tenant), " "), disallowed) {
+	for _, disallowed := range []string{"--use-device-code", "--scope", "--env", "--config", "--no-login"} {
+		if strings.Contains(strings.Join(azure.LoginArguments(command.Tenant, command.DeviceCode, command.SSHLogin), " "), disallowed) {
 			t.Errorf("Azure login arguments contain %s", disallowed)
 		}
+	}
+
+	command, err = Parse([]string{"login", "--device-code", "--ssh"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !command.DeviceCode || !command.SSHLogin {
+		t.Fatalf("parseCommand(login --device-code --ssh) = %+v", command)
+	}
+	want := "login --output none --use-device-code --scope " + azure.SSHLoginScope
+	if got := strings.Join(azure.LoginArguments(command.Tenant, command.DeviceCode, command.SSHLogin), " "); got != want {
+		t.Fatalf("azure.LoginArguments(device code, ssh) = %q, want %q", got, want)
 	}
 }
 
@@ -149,7 +201,7 @@ func TestCommandAndFlagShortcuts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if short != long {
+		if !reflect.DeepEqual(short, long) {
 			t.Fatalf("%q parsed differently from %q", pair[0], pair[1])
 		}
 	}
@@ -161,6 +213,59 @@ func TestCommandAndFlagShortcuts(t *testing.T) {
 	} {
 		if _, err := Parse(args); err == nil {
 			t.Fatalf("accepted invalid shortcuts %q", args)
+		}
+	}
+}
+
+func TestParseSubscriptionDiscoveryDoesNotChangeListAliases(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{{"list"}, {"environments"}, {"env"}, {"envs"}} {
+		command, err := Parse(args)
+		if err != nil || command.Kind != Environments {
+			t.Errorf("Parse(%q) = %+v, %v; want environments", args, command, err)
+		}
+	}
+	for _, args := range [][]string{{"list", "subscriptions"}, {"list", "subscriptions", "--refresh"}} {
+		command, err := Parse(args)
+		if err != nil || command.Kind != Subscriptions || command.Refresh != (len(args) == 3) {
+			t.Errorf("Parse(%q) = %+v, %v", args, command, err)
+		}
+	}
+	for _, args := range [][]string{
+		{"environments", "subscriptions"}, {"env", "subscriptions"}, {"envs", "subscriptions"},
+		{"list", "subscriptions", "extra"}, {"list", "subscriptions", "--unknown"},
+	} {
+		if _, err := Parse(args); err == nil {
+			t.Errorf("Parse(%q) accepted invalid subscription discovery syntax", args)
+		}
+	}
+}
+
+func TestParseTerraformDoctorRequiresExplicitValidatedTarget(t *testing.T) {
+	t.Parallel()
+	command, err := Parse([]string{
+		"doctor", "terraform",
+		"--subscription", "11111111-1111-4111-8111-111111111111",
+		"--account", "examplestate",
+		"--container", "tfstate-prod",
+		"--debug",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if command.Kind != TerraformDoctor || command.Subscription == "" || command.Account != "examplestate" || command.Container != "tfstate-prod" || !command.Debug {
+		t.Fatalf("Parse(doctor terraform) = %+v", command)
+	}
+	for _, args := range [][]string{
+		{"doctor", "terraform"},
+		{"doctor", "terraform", "--subscription", "sub", "--account", "Example", "--container", "state"},
+		{"doctor", "terraform", "--subscription", "sub", "--account", "example", "--container", "bad--name"},
+		{"doctor", "terraform", "--subscription", "-other", "--account", "example", "--container", "state"},
+		{"doctor", "terraform", "--subscription", "sub", "--account", "example", "--container", "state", "extra"},
+		{"doctor", "terraform", "--subscription", "sub", "--account", "example", "--container", "state", "--env", "dev"},
+	} {
+		if _, err := Parse(args); err == nil {
+			t.Errorf("Parse(%q) accepted an incomplete or unsafe target", args)
 		}
 	}
 }
@@ -245,5 +350,61 @@ func TestParseCommandProfiles(t *testing.T) {
 				t.Fatalf("parseCommand() = %+v, want kind %v, env %q, config %q, no-login %v", got, tt.wantKind, tt.wantEnv, tt.wantConfig, tt.wantNoLogin)
 			}
 		})
+	}
+}
+
+func TestParseRunCommandKeepsCommandArgumentsVerbatim(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		args []string
+		want []string
+	}{
+		{[]string{"run", "-e", "staging", "--", "kubectl", "get", "pods", "-n", "app"}, []string{"kubectl", "get", "pods", "-n", "app"}},
+		{[]string{"run", "-e", "staging", "kubectl", "--env", "x"}, []string{"kubectl", "--env", "x"}},
+		{[]string{"run", "-e", "staging", "--", "sh", "-c", "echo $HOME; exit 3"}, []string{"sh", "-c", "echo $HOME; exit 3"}},
+		{[]string{"run", "-e", "staging", "--", "--help"}, []string{"--help"}},
+	} {
+		command, err := Parse(tc.args)
+		if err != nil {
+			t.Errorf("Parse(%q) error = %v", tc.args, err)
+			continue
+		}
+		if command.Kind != Run || command.Environment != "staging" || !reflect.DeepEqual(command.Argv, tc.want) {
+			t.Errorf("Parse(%q) = kind %v env %q argv %q, want run staging %q", tc.args, command.Kind, command.Environment, command.Argv, tc.want)
+		}
+	}
+}
+
+func TestParseRunCommandOptions(t *testing.T) {
+	t.Parallel()
+	command, err := Parse([]string{"run", "-c", "profile.json", "--acr", "-n", "--private-host", "db.private.example", "-d", "--", "terraform", "plan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if command.ConfigPath != "profile.json" || !command.ACR || !command.NoLogin || !command.Debug ||
+		!reflect.DeepEqual(command.PrivateHosts, []string{"db.private.example"}) || !reflect.DeepEqual(command.Argv, []string{"terraform", "plan"}) {
+		t.Fatalf("Parse() = %+v", command)
+	}
+}
+
+func TestParseRunCommandRejectsMissingCommandOrTarget(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{
+		{"run", "-e", "staging"},
+		{"run", "-e", "staging", "--"},
+		{"run", "-e", "staging", "--", ""},
+		{"run", "--", "kubectl"},
+		{"run", "-e", "staging", "-c", "x.json", "--", "kubectl"},
+		{"run", "-e", "staging", "-n", "--", "kubectl"},
+	} {
+		if _, err := Parse(args); err == nil {
+			t.Errorf("Parse(%q) error = nil", args)
+		}
+	}
+	for _, args := range [][]string{{"run", "--help"}, {"help", "run"}, {"run", "-e", "staging", "--help"}} {
+		command, err := Parse(args)
+		if err != nil || command.Kind != Help || command.HelpTopic != "run" {
+			t.Errorf("Parse(%q) = %+v, %v; want run help", args, command, err)
+		}
 	}
 }

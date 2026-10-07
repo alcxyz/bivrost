@@ -74,17 +74,12 @@ func openBastion(ctx context.Context, c profile.Profile) (_ *bastionSession, res
 	}
 	s.sshConfig = filepath.Join(s.directory, "ssh_config")
 	if c.SSHUser == "" {
-		fmt.Println("Preparing a short-lived Entra SSH certificate using your local Azure login...")
+		fmt.Fprintln(os.Stderr, "Preparing a short-lived Entra SSH certificate using your local Azure login...")
 		finishCredentials := diagnostics.Step(ctx, diagnostics.EventSSHCredentials)
-		authCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		cmd, e := azure.Command(authCtx, "ssh", "config", "--ip", "127.0.0.1", "--port", strconv.Itoa(s.port), "--file", s.sshConfig, "--keys-destination-folder", s.directory, "--subscription", c.Subscription, "--only-show-errors")
-		if e == nil {
-			e = cmd.Run()
-		}
-		cancel()
+		e := prepareSSHCertificate(ctx, c, s.sshConfig, s.directory, s.port)
 		finishCredentials(e)
 		if e != nil {
-			return nil, errors.New("Entra SSH setup failed; run bivrost login and check the Azure CLI ssh extension and VM login access")
+			return nil, e
 		}
 	} else {
 		if err := os.WriteFile(s.sshConfig, nil, 0600); err != nil {
@@ -97,12 +92,26 @@ func openBastion(ctx context.Context, c profile.Profile) (_ *bastionSession, res
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("Opening the Bastion tunnel...")
+	tunnelErrors := azure.NewTunnelErrors()
+	cmd.Stderr = tunnelErrors
+	// Stderr is a pipe, so a descendant holding it open must not block Wait.
+	cmd.WaitDelay = 5 * time.Second
+	fmt.Fprintln(os.Stderr, "Opening the Bastion tunnel...")
 	s.process, err = startChild(cmd)
 	if err != nil {
 		return nil, errors.New("could not start Azure Bastion tunnel")
 	}
 	if err := waitPort(ctx, profile.Loopback(s.port), s.process); err != nil {
+		// Cancellation also ends the tunnel; report it, not the tunnel's exit.
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		select {
+		case <-s.process.done:
+			// Wait has returned, so Azure CLI's stderr is fully copied.
+			return nil, tunnelErrors.Err()
+		default:
+		}
 		return nil, err
 	}
 	complete = true

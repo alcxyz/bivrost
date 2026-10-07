@@ -34,6 +34,37 @@ type kubeTarget struct {
 	port string
 }
 
+type kubeUnavailableReason uint8
+
+const (
+	kubeUnavailableMissingKubelogin kubeUnavailableReason = iota + 1
+	kubeUnavailableMissingKubectl
+	kubeUnavailableAKSCredentials
+	kubeUnavailableAKSCredentialsTimeout
+)
+
+// kubeUnavailableError is limited to operational conditions that do not make
+// the session transport unsafe. Its messages are fixed so command output and
+// provider details cannot escape through the fallback banner.
+type kubeUnavailableError struct {
+	reason kubeUnavailableReason
+}
+
+func (e *kubeUnavailableError) Error() string {
+	switch e.reason {
+	case kubeUnavailableMissingKubelogin:
+		return "kubelogin is missing from PATH"
+	case kubeUnavailableMissingKubectl:
+		return "kubectl is missing from PATH"
+	case kubeUnavailableAKSCredentialsTimeout:
+		return "AKS credential preparation timed out"
+	case kubeUnavailableAKSCredentials:
+		return "AKS credentials could not be prepared"
+	default:
+		return "Kubernetes setup is unavailable"
+	}
+}
+
 type limitedOutput struct {
 	buffer   bytes.Buffer
 	limit    int
@@ -70,9 +101,18 @@ func prepareKubeconfig(ctx context.Context, c profile.Profile, directory string,
 	if err != nil || !info.IsDir() {
 		return kubeTarget{}, errors.New("temporary session directory is unavailable")
 	}
-	for _, tool := range []string{"az", "kubelogin", "kubectl"} {
-		if _, err := exec.LookPath(tool); err != nil {
-			return kubeTarget{}, errors.New(tool + " is missing from PATH")
+	if _, err := exec.LookPath("az"); err != nil {
+		return kubeTarget{}, errors.New("az is missing from PATH")
+	}
+	for _, tool := range []struct {
+		name   string
+		reason kubeUnavailableReason
+	}{
+		{name: "kubelogin", reason: kubeUnavailableMissingKubelogin},
+		{name: "kubectl", reason: kubeUnavailableMissingKubectl},
+	} {
+		if _, err := exec.LookPath(tool.name); err != nil {
+			return kubeTarget{}, &kubeUnavailableError{reason: tool.reason}
 		}
 	}
 
@@ -98,7 +138,7 @@ func prepareKubeconfig(ctx context.Context, c profile.Profile, directory string,
 	}
 	cancelCredentials()
 	if err != nil {
-		return kubeTarget{}, commandFailure(ctx, credentialsCtx, "AKS credential preparation failed", "AKS credential preparation timed out")
+		return kubeTarget{}, kubeCredentialsFailure(ctx, credentialsCtx)
 	}
 	if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() {
 		return kubeTarget{}, errors.New("Azure CLI did not create a regular kubeconfig file")
@@ -147,6 +187,16 @@ func prepareKubeconfig(ctx context.Context, c profile.Profile, directory string,
 	target.path = path
 	complete = true
 	return target, nil
+}
+
+func kubeCredentialsFailure(parent, child context.Context) error {
+	if err := parent.Err(); err != nil {
+		return err
+	}
+	if errors.Is(child.Err(), context.DeadlineExceeded) {
+		return &kubeUnavailableError{reason: kubeUnavailableAKSCredentialsTimeout}
+	}
+	return &kubeUnavailableError{reason: kubeUnavailableAKSCredentials}
 }
 
 func commandFailure(parent, child context.Context, failed, timedOut string) error {

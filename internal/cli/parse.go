@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
+	"github.com/alcxyz/bivrost/internal/azure"
 	profile "github.com/alcxyz/bivrost/internal/config"
+	"github.com/alcxyz/bivrost/internal/heimdal"
 )
 
 type Kind int
@@ -16,6 +19,7 @@ type Kind int
 const (
 	Help Kind = iota
 	Environments
+	Subscriptions
 	ConfigInit
 	Connect
 	Switch
@@ -28,18 +32,36 @@ const (
 	ACRDoctor
 	Login
 	Doctor
+	TerraformDoctor
+	SessionPublish
+	SessionUnpublish
+	SessionPath
+	SessionClean
+	HeimdalInit
+	Run
 )
 
 type Command struct {
-	Kind        Kind
-	Environment string
-	ConfigPath  string
-	ACR         bool
-	NoPull      bool
-	NoLogin     bool
-	Tenant      string
-	Debug       bool
-	HelpTopic   string
+	Kind             Kind
+	Environment      string
+	ConfigPath       string
+	PrivateHosts     []string
+	ACR              bool
+	NoPull           bool
+	NoLogin          bool
+	Tenant           string
+	DeviceCode       bool
+	SSHLogin         bool
+	Debug            bool
+	Refresh          bool
+	Subscription     string
+	Account          string
+	Container        string
+	MetadataPrefix   string
+	MetadataValidity time.Duration
+	HelpTopic        string
+	// Argv is the local command and arguments for Run, executed without a shell.
+	Argv []string
 }
 
 func Parse(args []string) (Command, error) {
@@ -60,13 +82,32 @@ func Parse(args []string) (Command, error) {
 	if len(args) == 3 && args[0] == "config" && args[1] == "init" && (args[2] == "--help" || args[2] == "-h") {
 		return Command{Kind: Help, HelpTopic: "config init"}, nil
 	}
+	if len(args) == 3 && args[0] == "doctor" && args[1] == "terraform" && (args[2] == "--help" || args[2] == "-h") {
+		return Command{Kind: Help, HelpTopic: "doctor terraform"}, nil
+	}
 
 	if len(args) == 0 || (len(args) == 1 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h")) {
 		return Command{Kind: Help}, nil
 	}
 
 	switch args[0] {
-	case "list", "environments", "env", "envs":
+	case "heimdal":
+		if len(args) == 1 {
+			return Command{Kind: Help, HelpTopic: "heimdal"}, nil
+		}
+		if args[1] != "init" {
+			return Command{}, errors.New("use bivrost heimdal init --help")
+		}
+		return parseHeimdalInit(args[2:])
+	case "list":
+		if len(args) >= 2 && args[1] == "subscriptions" {
+			return parseSubscriptionsCommand(args[2:])
+		}
+		if len(args) != 1 {
+			return Command{}, errors.New("list does not accept arguments; use bivrost list subscriptions to discover Azure subscriptions")
+		}
+		return Command{Kind: Environments}, nil
+	case "environments", "env", "envs":
 		if len(args) != 1 {
 			return Command{}, fmt.Errorf("%s does not accept arguments", args[0])
 		}
@@ -84,7 +125,22 @@ func Parse(args []string) (Command, error) {
 			return Command{}, errors.New("version does not accept arguments")
 		}
 		return Command{Kind: Version}, nil
+	case "session":
+		if len(args) == 1 {
+			return Command{Kind: Help, HelpTopic: "session"}, nil
+		}
+		if len(args) == 3 && (args[2] == "--help" || args[2] == "-h") && HelpText("session "+args[1]) != "" {
+			return Command{Kind: Help, HelpTopic: "session " + args[1]}, nil
+		}
+		kind, ok := map[string]Kind{"publish": SessionPublish, "unpublish": SessionUnpublish, "path": SessionPath, "clean": SessionClean}[args[1]]
+		if !ok || len(args) != 2 {
+			return Command{}, errors.New("use bivrost session publish, unpublish, path, or clean without options")
+		}
+		return Command{Kind: kind}, nil
 	case "doctor":
+		if len(args) >= 2 && args[1] == "terraform" {
+			return parseTerraformDoctorCommand(args[2:])
+		}
 		return parseConnectionCommand(Doctor, "doctor", args[1:], false)
 	case "switch":
 		return parseConnectionCommand(Switch, "switch", args[1:], false)
@@ -92,6 +148,8 @@ func Parse(args []string) (Command, error) {
 		return parseConnectionCommand(Connect, "connect", args[1:], true)
 	case "ssh":
 		return parseConnectionCommand(SSH, "ssh", args[1:], false)
+	case "run":
+		return parseConnectionCommand(Run, "run", args[1:], true)
 	case "acr":
 		if len(args) == 1 {
 			return Command{}, errors.New("missing ACR command; use bivrost help")
@@ -127,6 +185,52 @@ func Parse(args []string) (Command, error) {
 	}
 }
 
+func parseTerraformDoctorCommand(args []string) (Command, error) {
+	flags := flag.NewFlagSet("doctor terraform", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	subscription := flags.String("subscription", "", "Azure subscription name or ID")
+	account := flags.String("account", "", "Azure storage account name")
+	container := flags.String("container", "", "Azure Blob container name")
+	debug := flags.Bool("debug", false, "write a bounded local diagnostic log")
+	flags.BoolVar(debug, "d", false, "write a bounded local diagnostic log")
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return Command{Kind: Help, HelpTopic: "doctor terraform"}, nil
+		}
+		return Command{}, fmt.Errorf("invalid doctor terraform options: %w", err)
+	}
+	if flags.NArg() != 0 {
+		return Command{}, errors.New("doctor terraform does not accept positional arguments")
+	}
+	target := azure.TerraformBackend{Subscription: *subscription, Account: *account, Container: *container}
+	if err := azure.ValidateTerraformBackend(target); err != nil {
+		return Command{}, err
+	}
+	return Command{
+		Kind:         TerraformDoctor,
+		Subscription: target.Subscription,
+		Account:      target.Account,
+		Container:    target.Container,
+		Debug:        *debug,
+	}, nil
+}
+
+func parseSubscriptionsCommand(args []string) (Command, error) {
+	flags := flag.NewFlagSet("list subscriptions", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	refresh := flags.Bool("refresh", false, "retrieve an up-to-date subscription list from Azure")
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return Command{Kind: Help, HelpTopic: "list subscriptions"}, nil
+		}
+		return Command{}, fmt.Errorf("invalid list subscriptions options: %w", err)
+	}
+	if flags.NArg() != 0 {
+		return Command{}, errors.New("list subscriptions does not accept positional arguments")
+	}
+	return Command{Kind: Subscriptions, Refresh: *refresh}, nil
+}
+
 func parseConnectionCommand(kind Kind, name string, args []string, allowNoLogin bool) (Command, error) {
 	flags := flag.NewFlagSet(name, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -136,12 +240,19 @@ func parseConnectionCommand(kind Kind, name string, args []string, allowNoLogin 
 	flags.StringVar(environment, "e", "", "environment profile name")
 	configPath := flags.String("config", "", "path to a connection configuration")
 	flags.StringVar(configPath, "c", "", "path to a connection configuration")
+	var privateHosts []string
+	if kind == Connect || kind == ACRConnect || kind == Switch || kind == Run {
+		flags.Func("private-host", "exact private DNS host to route through this session (repeatable)", func(host string) error {
+			privateHosts = append(privateHosts, host)
+			return nil
+		})
+	}
 	var noPull bool
 	if kind == Doctor {
 		flags.BoolVar(&noPull, "no-pull", false, "skip the diagnostic image pull")
 	}
 	var acr bool
-	if kind == Connect || kind == Switch {
+	if kind == Connect || kind == Switch || kind == Run {
 		flags.BoolVar(&acr, "acr", false, "enable Podman registry access")
 	}
 	var noLogin *bool
@@ -155,7 +266,13 @@ func parseConnectionCommand(kind Kind, name string, args []string, allowNoLogin 
 		}
 		return Command{}, fmt.Errorf("invalid %s options: %w", name, err)
 	}
-	if flags.NArg() != 0 {
+	var argv []string
+	if kind == Run {
+		argv = flags.Args()
+		if len(argv) == 0 || argv[0] == "" {
+			return Command{}, errors.New("run requires a command after its options; use bivrost run -e NAME -- COMMAND [ARGS...]")
+		}
+	} else if flags.NArg() != 0 {
 		return Command{}, fmt.Errorf("%s does not accept positional arguments", name)
 	}
 
@@ -181,12 +298,15 @@ func parseConnectionCommand(kind Kind, name string, args []string, allowNoLogin 
 	if seenConfig && strings.TrimSpace(*configPath) == "" {
 		return Command{}, errors.New("--config requires a non-empty path")
 	}
+	if err := (profile.Profile{PrivateHosts: privateHosts}).ValidatePrivateHosts(); err != nil {
+		return Command{}, fmt.Errorf("invalid --private-host: %w", err)
+	}
 
-	command := Command{NoPull: noPull, ACR: acr, Kind: kind, Environment: *environment, ConfigPath: *configPath, Debug: *debug}
+	command := Command{NoPull: noPull, ACR: acr, Kind: kind, Environment: *environment, ConfigPath: *configPath, PrivateHosts: privateHosts, Debug: *debug, Argv: argv}
 	if noLogin != nil {
 		command.NoLogin = *noLogin
 	}
-	if kind == Connect && command.NoLogin && !acr {
+	if (kind == Connect || kind == Run) && command.NoLogin && !acr {
 		return Command{}, errors.New("--no-login requires --acr")
 	}
 	return command, nil
@@ -199,6 +319,8 @@ func parseLoginCommand(args []string) (Command, error) {
 	flags.BoolVar(debug, "d", false, "write a bounded local diagnostic log")
 	tenant := flags.String("tenant", "", "Azure tenant to authenticate against")
 	flags.StringVar(tenant, "t", "", "Azure tenant to authenticate against")
+	deviceCode := flags.Bool("device-code", false, "sign in with a device code instead of a browser")
+	ssh := flags.Bool("ssh", false, "also satisfy Entra SSH certificate sign-in requirements")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return Command{Kind: Help, HelpTopic: "login"}, nil
@@ -213,5 +335,50 @@ func parseLoginCommand(args []string) (Command, error) {
 	if seenTenant && strings.TrimSpace(*tenant) == "" {
 		return Command{}, errors.New("--tenant requires a non-empty value")
 	}
-	return Command{Kind: Login, Tenant: *tenant, Debug: *debug}, nil
+	return Command{Kind: Login, Tenant: *tenant, DeviceCode: *deviceCode, SSHLogin: *ssh, Debug: *debug}, nil
+}
+
+func parseHeimdalInit(args []string) (Command, error) {
+	flags := flag.NewFlagSet("heimdal init", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	c := Command{Kind: HeimdalInit}
+	flags.StringVar(&c.Environment, "env", "", "metadata environment")
+	flags.StringVar(&c.Environment, "e", "", "metadata environment")
+	flags.StringVar(&c.Subscription, "subscription", "", "publisher Azure subscription")
+	flags.StringVar(&c.Account, "account", "", "existing storage account")
+	flags.StringVar(&c.Container, "container", "heimdal", "existing container")
+	flags.StringVar(&c.MetadataPrefix, "prefix", "", "metadata blob prefix")
+	flags.DurationVar(&c.MetadataValidity, "valid-for", heimdal.DefaultValidity, "metadata validity")
+	flags.Func("private-host", "exact route to publish (repeatable)", func(host string) error { c.PrivateHosts = append(c.PrivateHosts, host); return nil })
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return Command{Kind: Help, HelpTopic: "heimdal init"}, nil
+		}
+		return Command{}, errors.New("invalid heimdal init options; use --help")
+	}
+	if flags.NArg() != 0 {
+		return Command{}, errors.New("heimdal init does not accept positional arguments")
+	}
+	if !profile.ValidEnvironmentName(c.Environment) {
+		return Command{}, errors.New("heimdal init requires a valid --env NAME")
+	}
+	if err := azure.ValidateTerraformBackend(azure.TerraformBackend{Subscription: c.Subscription, Account: c.Account, Container: c.Container}); err != nil {
+		return Command{}, err
+	}
+	if c.MetadataPrefix == "" {
+		c.MetadataPrefix = heimdal.DefaultPrefix(c.Environment)
+	}
+	if !heimdal.ValidPrefix(c.MetadataPrefix) {
+		return Command{}, errors.New("invalid metadata prefix; use slash-separated lowercase name segments")
+	}
+	if c.MetadataValidity <= 0 || c.MetadataValidity > heimdal.MaxValidity {
+		return Command{}, errors.New("--valid-for must be greater than zero and at most 168h")
+	}
+	if err := (profile.Profile{PrivateHosts: c.PrivateHosts}).ValidatePrivateHosts(); err != nil {
+		return Command{}, err
+	}
+	if len(c.PrivateHosts) > 128 {
+		return Command{}, errors.New("at most 128 private routes may be published")
+	}
+	return c, nil
 }

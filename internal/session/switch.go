@@ -23,13 +23,15 @@ const (
 var ErrSwitchAccepted = errors.New("session switch accepted")
 
 type switchRequest struct {
-	Environment string `json:"Environment"`
-	ConfigPath  string `json:"ConfigPath"`
-	ACR         bool   `json:"ACR"`
+	Environment  string   `json:"Environment"`
+	ConfigPath   string   `json:"ConfigPath"`
+	PrivateHosts []string `json:"PrivateHosts,omitempty"`
+	ACR          bool     `json:"ACR"`
 }
 
 type switchReconnectError struct {
-	config profile.Profile
+	config    profile.Profile
+	published bool
 }
 
 func (e *switchReconnectError) Error() string {
@@ -37,11 +39,14 @@ func (e *switchReconnectError) Error() string {
 }
 
 func runSwitch(ctx context.Context, command cli.Command) error {
+	if insideRun() {
+		return errors.New("bivrost switch is not available inside bivrost run; use a bivrost connect shell")
+	}
 	if os.Getenv("BIVROST_SWITCH_ALLOWED") != "1" || os.Getenv("BIVROST_SESSION") == "" {
 		return errors.New("run bivrost switch inside an active Bivrost Bash, Zsh, or PowerShell session")
 	}
 
-	request := switchRequest{Environment: command.Environment, ACR: command.ACR}
+	request := switchRequest{Environment: command.Environment, PrivateHosts: append([]string(nil), command.PrivateHosts...), ACR: command.ACR}
 	if command.ConfigPath != "" {
 		path, err := filepath.Abs(command.ConfigPath)
 		if err != nil {
@@ -86,6 +91,10 @@ func loadSwitchTarget(request switchRequest) (profile.Profile, error) {
 	}
 
 	c, err := profile.LoadEnvironment(request.Environment, request.ConfigPath)
+	if err != nil {
+		return profile.Profile{}, err
+	}
+	c, err = withPrivateHosts(c, request.PrivateHosts)
 	if err != nil {
 		return profile.Profile{}, err
 	}

@@ -226,6 +226,10 @@ func Event(ctx context.Context, event EventName) {
 	log.write(diagnosticRecord{Timestamp: time.Now().UTC().Format(time.RFC3339Nano), Event: name, Phase: "event"})
 }
 
+// ErrInteractionRequired marks a step that stopped because delegated
+// authentication asked for interactive sign-in.
+var ErrInteractionRequired = errors.New("interactive sign-in required")
+
 // The error is classified, never formatted or serialized. Callers cannot attach
 // arbitrary fields, endpoint names, command arguments, or subprocess output.
 func Step(ctx context.Context, event EventName) func(error) {
@@ -245,6 +249,8 @@ func Step(ctx context.Context, event EventName) func(error) {
 				outcome = "timeout"
 			case errors.Is(err, context.Canceled):
 				outcome = "cancelled"
+			case errors.Is(err, ErrInteractionRequired):
+				outcome = "interaction_required"
 			case err != nil:
 				outcome = "failure"
 			}

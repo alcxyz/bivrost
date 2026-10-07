@@ -143,3 +143,87 @@ func TestLoadUserSettingsRejectsLegacyEngineWithoutChangingFile(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadAuthenticationBrowser(t *testing.T) {
+	root := isolateSettings(t)
+	if got, err := LoadAuthenticationBrowser(); err != nil || got != nil {
+		t.Fatalf("LoadAuthenticationBrowser() without settings = %v, %v; want nil", got, err)
+	}
+	writeSettings(t, root, `{"authentication_browser":{"executable":"/opt/browser/bin/browser","arguments":["--profile","Work Profile","{url}","--new-window"]}}`)
+	got, err := LoadAuthenticationBrowser()
+	if err != nil || got == nil {
+		t.Fatalf("LoadAuthenticationBrowser() = %v, %v", got, err)
+	}
+	executable, args := got.Command("https://login.example/authorize?a=1&b=$(x)")
+	want := []string{"--profile", "Work Profile", "https://login.example/authorize?a=1&b=$(x)", "--new-window"}
+	if executable != "/opt/browser/bin/browser" || strings.Join(args, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("Command() = %q %q, want %q", executable, args, want)
+	}
+	if prompt, err := LoadPromptSettings(); err != nil || prompt != DefaultPromptSettings() {
+		t.Fatalf("prompt settings changed with browser settings: %v, %v", prompt, err)
+	}
+}
+
+func TestAuthenticationBrowserAppendsAddressWithoutPlaceholder(t *testing.T) {
+	executable, args := AuthenticationBrowser{Executable: "browser", Arguments: []string{"-P", "work"}}.Command("https://login.example/")
+	if executable != "browser" || strings.Join(args, " ") != "-P work https://login.example/" {
+		t.Fatalf("Command() = %q %q", executable, args)
+	}
+	_, args = AuthenticationBrowser{Executable: "browser"}.Command("https://login.example/")
+	if len(args) != 1 || args[0] != "https://login.example/" {
+		t.Fatalf("Command() without arguments = %q", args)
+	}
+}
+
+func TestLoadAuthenticationBrowserRejectsInvalid(t *testing.T) {
+	cases := []string{
+		`{"authentication_browser":null}`,
+		`{"authentication_browser":[]}`,
+		`{"authentication_browser":{}}`,
+		`{"authentication_browser":{"executable":"   "}}`,
+		`{"authentication_browser":{"executable":"browser","SECRET_MARKER":1}}`,
+		`{"authentication_browser":{"executable":"browser\nSECRET_MARKER"}}`,
+		`{"authentication_browser":{"executable":"C:\\tools\\SECRET_MARKER.cmd"}}`,
+		`{"authentication_browser":{"executable":"SECRET_MARKER.BAT"}}`,
+		`{"authentication_browser":{"executable":"browser","arguments":"SECRET_MARKER"}}`,
+		`{"authentication_browser":{"executable":"browser","arguments":["--app={url}"]}}`,
+		`{"authentication_browser":{"executable":"browser","arguments":["{url}","{url}"]}}`,
+		`{"authentication_browser":{"executable":"browser","arguments":["SECRET_MARKER\u0000"]}}`,
+		`{"authentication_browser":{"executable":"browser","arguments":["` + strings.Repeat("a", 1025) + `"]}}`,
+		`{"authentication_browser":{"executable":"browser","arguments":[` + strings.Repeat(`"a",`, 32) + `"a"]}}`,
+	}
+	for _, content := range cases {
+		t.Run(content[:min(len(content), 70)], func(t *testing.T) {
+			root := isolateSettings(t)
+			writeSettings(t, root, content)
+			_, err := LoadAuthenticationBrowser()
+			if err == nil {
+				t.Fatal("expected invalid settings to fail")
+			}
+			if strings.Contains(err.Error(), "SECRET_MARKER") {
+				t.Fatal("error exposed configuration contents")
+			}
+		})
+	}
+}
+
+func TestLoadInteractiveConnect(t *testing.T) {
+	root := isolateSettings(t)
+	if got, err := LoadInteractiveConnect(); err != nil || !got {
+		t.Fatalf("LoadInteractiveConnect() default = %v, %v; want true", got, err)
+	}
+	for content, want := range map[string]bool{
+		`{"interactive_connect":false}`: false,
+		`{"interactive_connect":true}`:  true,
+		`{"prompt":{"enabled":false}}`:  true,
+	} {
+		writeSettings(t, root, content)
+		if got, err := LoadInteractiveConnect(); err != nil || got != want {
+			t.Errorf("%s: LoadInteractiveConnect() = %v, %v; want %v", content, got, err, want)
+		}
+	}
+	writeSettings(t, root, `{"interactive_connect":"SECRET_MARKER"}`)
+	if _, err := LoadInteractiveConnect(); err == nil || strings.Contains(err.Error(), "SECRET_MARKER") {
+		t.Fatalf("invalid interactive_connect error = %v", err)
+	}
+}

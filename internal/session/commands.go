@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/alcxyz/bivrost/internal/authbrowser"
 	"github.com/alcxyz/bivrost/internal/azure"
 	"github.com/alcxyz/bivrost/internal/cli"
 	profile "github.com/alcxyz/bivrost/internal/config"
@@ -15,6 +16,11 @@ import (
 )
 
 func Run(args []string, version string) (resultErr error) {
+	if len(args) > 0 && args[0] == "run" {
+		// Every Bivrost-side failure, including usage errors, must be
+		// distinguishable from the command's own status.
+		defer func() { resultErr = runFailure(resultErr) }()
+	}
 	command, err := cli.Parse(args)
 	if err != nil {
 		return err
@@ -42,7 +48,7 @@ func Run(args []string, version string) (resultErr error) {
 	ctx := context.Background()
 	stop := func() {}
 	signals := terminationSignals(true)
-	if command.Kind == cli.Connect || command.Kind == cli.ACRConnect {
+	if command.Kind == cli.Connect || command.Kind == cli.ACRConnect || command.Kind == cli.Run {
 		// Platform sessions manage Ctrl+C themselves: cancel setup, but let the
 		// foreground local shell handle interrupts once it is running.
 		signals = terminationSignals(false)
@@ -51,6 +57,13 @@ func Run(args []string, version string) (resultErr error) {
 		ctx, stop = signal.NotifyContext(ctx, signals...)
 	}
 	defer stop()
+	if command.Kind == cli.Subscriptions {
+		subscriptions, err := azure.DiscoverSubscriptions(ctx, command.Refresh)
+		if err != nil {
+			return err
+		}
+		return cli.WriteSubscriptions(os.Stdout, subscriptions)
+	}
 
 	if command.Debug {
 		debugCtx, logger, err := diagnostics.Start(ctx)
@@ -75,6 +88,18 @@ func Run(args []string, version string) (resultErr error) {
 		}()
 	}
 
+	switch command.Kind {
+	case cli.HeimdalInit:
+		return runHeimdalInit(ctx, command, os.Stdout)
+	case cli.SessionPublish:
+		return runSessionPublication(ctx, "publish")
+	case cli.SessionUnpublish:
+		return runSessionPublication(ctx, "unpublish")
+	case cli.SessionPath:
+		return runSessionPublication(ctx, "path")
+	case cli.SessionClean:
+		return cleanPublications(ctx)
+	}
 	if command.Kind == cli.Switch {
 		return runSwitch(ctx, command)
 	}
@@ -82,7 +107,10 @@ func Run(args []string, version string) (resultErr error) {
 		return enableSessionACR(ctx)
 	}
 	if command.Kind == cli.Login {
-		return localAzureLogin(ctx, command.Tenant)
+		return localAzureLogin(ctx, command)
+	}
+	if command.Kind == cli.TerraformDoctor {
+		return runTerraformDoctor(ctx, command, os.Stdout)
 	}
 
 	if command.Kind == cli.Doctor {
@@ -95,14 +123,18 @@ func Run(args []string, version string) (resultErr error) {
 	if err != nil {
 		return err
 	}
+	c, err = withPrivateHosts(c, command.PrivateHosts)
+	if err != nil {
+		return err
+	}
 	if command.Kind == cli.ACRProxy || command.Kind == cli.ACRConnect || command.Kind == cli.ACRLogin || command.Kind == cli.ACRDoctor {
 		_, err := profile.LoadUserSettings()
 		if err != nil {
 			return err
 		}
 	}
-	if c.RequiresPIM && (command.Kind == cli.Connect || command.Kind == cli.SSH || command.Kind == cli.ACRConnect) {
-		fmt.Println("This environment requires PIM activation. Activate your eligible access before connecting; this tool does not grant or activate permissions.")
+	if c.RequiresPIM && (command.Kind == cli.Connect || command.Kind == cli.SSH || command.Kind == cli.ACRConnect || command.Kind == cli.Run) {
+		fmt.Fprintln(os.Stderr, "This environment requires PIM activation. Activate your eligible access before connecting; this tool does not grant or activate permissions.")
 	}
 
 	switch command.Kind {
@@ -118,6 +150,20 @@ func Run(args []string, version string) (resultErr error) {
 			return connect(ctx, c, command.NoLogin)
 		}
 		return platformConnect(ctx, c)
+	case cli.Run:
+		c.Environment = command.Environment
+		if c.Environment == "" {
+			c.Environment = "custom-profile"
+		}
+		if err := c.ValidatePlatform(); err != nil {
+			return err
+		}
+		if command.ACR {
+			if err := prepareACRSession(ctx, &c, command.NoLogin); err != nil {
+				return err
+			}
+		}
+		return runPlatformCommand(ctx, c, command.Argv)
 	case cli.SSH:
 		if err := c.ValidateConnection(); err != nil {
 			return err
@@ -143,12 +189,56 @@ func Run(args []string, version string) (resultErr error) {
 	}
 }
 
-func localAzureLogin(ctx context.Context, tenant string) (resultErr error) {
+func withPrivateHosts(c profile.Profile, additional []string) (profile.Profile, error) {
+	if len(additional) == 0 {
+		return c, nil
+	}
+	hosts := append([]string(nil), c.PrivateHosts...)
+	seen := make(map[string]struct{}, len(c.PrivateHosts)+len(additional))
+	for _, host := range c.PrivateHosts {
+		seen[host] = struct{}{}
+	}
+	for _, host := range additional {
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		hosts = append(hosts, host)
+	}
+	c.PrivateHosts = hosts
+	if err := c.ValidatePrivateHosts(); err != nil {
+		return profile.Profile{}, err
+	}
+	return c, nil
+}
+
+func localAzureLogin(ctx context.Context, command cli.Command) (resultErr error) {
 	finish := diagnostics.Step(ctx, diagnostics.EventAzureLogin)
 	defer func() { finish(resultErr) }()
-	cmd, err := azure.Command(ctx, azure.LoginArguments(tenant)...)
+	configured, err := profile.HasAuthenticationBrowsers()
 	if err != nil {
 		return err
+	}
+	tenant := command.Tenant
+	if tenant == "" {
+		var rule string
+		tenant, rule, err = profile.DefaultLoginTenant()
+		if err != nil {
+			return err
+		}
+		if rule != "" {
+			fmt.Printf("Signing in to the tenant from authentication-browsers.d/%s.json; use -t to choose another.\n", rule)
+		}
+	}
+	cmd, err := azure.InteractiveCommand(ctx, azure.LoginArguments(tenant, command.DeviceCode, command.SSHLogin)...)
+	if err != nil {
+		return err
+	}
+	// Without authentication browsers, Azure CLI keeps its normal browser choice.
+	if configured {
+		if err := authbrowser.Interactive(cmd, ""); err != nil {
+			return err
+		}
 	}
 	// This logs in the local Azure CLI. It does not authenticate an Azure CLI
 	// inside the VM reached by `bivrost ssh`.

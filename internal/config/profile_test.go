@@ -119,6 +119,9 @@ func TestConfigValidateConnection(t *testing.T) {
 		{name: "Entra authentication", config: valid},
 		{name: "key authentication", config: withKey},
 		{name: "missing connection field", config: func() Profile { c := valid; c.BastionName = ""; return c }(), wantErr: "fill in subscription"},
+		{name: "option-shaped subscription", config: func() Profile { c := valid; c.Subscription = "--help"; return c }(), wantErr: "fill in subscription"},
+		{name: "option-shaped bastion name", config: func() Profile { c := valid; c.BastionName = "--help"; return c }(), wantErr: "fill in subscription"},
+		{name: "option-shaped bastion resource group", config: func() Profile { c := valid; c.BastionResourceGroup = "--help"; return c }(), wantErr: "fill in subscription"},
 		{name: "malformed VM resource ID", config: func() Profile { c := valid; c.VMResourceID += "/extensions/extra"; return c }(), wantErr: "fill in subscription"},
 		{name: "only SSH user", config: func() Profile { c := valid; c.SSHUser = "azureuser"; return c }(), wantErr: "must both be set"},
 		{name: "only identity file", config: func() Profile { c := valid; c.IdentityFile = "/keys/id"; return c }(), wantErr: "must both be set"},
@@ -141,5 +144,64 @@ func TestConfigValidateConnection(t *testing.T) {
 				t.Fatalf("validateConnection() error = %v, want error containing %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestConfigValidatePlatformRejectsOptionShapedAKSNames(t *testing.T) {
+	t.Parallel()
+
+	valid := Profile{
+		Subscription:         "subscription-1",
+		BastionName:          "bastion-1",
+		BastionResourceGroup: "network-rg",
+		VMResourceID:         "/subscriptions/subscription-1/resourceGroups/network-rg/providers/Microsoft.Compute/virtualMachines/jump-1",
+		ProxyPort:            18080,
+		SOCKSPort:            18081,
+		AKS: &AKS{
+			Name:          "cluster-1",
+			ResourceGroup: "cluster-rg",
+			Subscription:  "cluster-subscription",
+		},
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*AKS)
+	}{
+		{name: "name", mutate: func(aks *AKS) { aks.Name = "--help" }},
+		{name: "resource group", mutate: func(aks *AKS) { aks.ResourceGroup = "--help" }},
+		{name: "subscription", mutate: func(aks *AKS) { aks.Subscription = "--help" }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := valid
+			aks := *valid.AKS
+			config.AKS = &aks
+			tt.mutate(config.AKS)
+			if err := config.ValidatePlatform(); err == nil || !strings.Contains(err.Error(), "aks must specify") {
+				t.Fatalf("ValidatePlatform() error = %v, want AKS validation error", err)
+			}
+		})
+	}
+}
+
+func TestValidResourceNameRejectsLeadingDash(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{name: "resource-name", want: true},
+		{name: "resource_name.1()", want: true},
+		{name: "-resource-name", want: false},
+		{name: "--help", want: false},
+	}
+
+	for _, tt := range tests {
+		if got := ValidResourceName(tt.name); got != tt.want {
+			t.Errorf("ValidResourceName(%q) = %t, want %t", tt.name, got, tt.want)
+		}
 	}
 }

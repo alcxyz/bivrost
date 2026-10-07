@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-20
-- Updated: 2026-09-23
+- Updated: 2026-09-30
 
 ## Context
 
@@ -21,9 +21,11 @@ before creating `v<VERSION>` at that exact tested commit. Existing version tags
 are never moved: later commits with the same version do not publish a new release.
 Only `main` publishes releases; `dev` produces test results and snapshots.
 Required promotion checks reject direct feature PRs to `main`, fork branches
-named `dev`, missing version bumps and reused tags. Use squash merges for feature PRs and release promotions, matching the
-maintained public applications. Merge `main` back into `dev` after promotion
-to reconcile the squash commit before further development.
+named `dev`, missing version bumps and reused tags. Use squash merges for
+feature PRs and merge commits for release promotions, matching the maintained
+public applications, so `main` never holds a commit missing from `dev`. The
+2026-09-30 update replaced squash promotions, whose required back-merge into
+`dev` caused repeated reconciliation work.
 No release-please bot is introduced.
 
 This supersedes the initial direct-to-main development flow. Existing tags and

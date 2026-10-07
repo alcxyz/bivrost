@@ -35,6 +35,7 @@ type Profile struct {
 	Environment          string          `json:"-"`
 	AKS                  *AKS            `json:"aks,omitempty"`
 	PrivateHosts         []string        `json:"private_hosts,omitempty"`
+	Heimdal              *HeimdalSource  `json:"heimdal,omitempty"`
 	Registry             string          `json:"registry"`
 	RegistrySubscription string          `json:"registry_subscription"`
 	Subscription         string          `json:"subscription"`
@@ -49,7 +50,7 @@ type Profile struct {
 
 var registryPattern = regexp.MustCompile(`^[a-z0-9]{5,50}$`)
 var resourcePattern = regexp.MustCompile(`(?i)^/subscriptions/[a-z0-9-]+/resourceGroups/[a-z0-9_.()-]+/providers/Microsoft\.Compute/virtualMachines/[a-z0-9_.-]+$`)
-var namePattern = regexp.MustCompile(`^[a-zA-Z0-9_.()-]+$`)
+var namePattern = regexp.MustCompile(`^[a-zA-Z0-9_.()][a-zA-Z0-9_.()-]*$`)
 
 func Load(path string) (Profile, error) {
 	c := Profile{ProxyPort: 18080, SOCKSPort: 18081}
@@ -96,6 +97,11 @@ func (c Profile) ValidateProxy() error {
 }
 
 func (c Profile) ValidatePlatform() error {
+	if c.Heimdal != nil {
+		if err := c.Heimdal.Validate(); err != nil {
+			return err
+		}
+	}
 	if err := c.ValidateConnection(); err != nil {
 		return err
 	}

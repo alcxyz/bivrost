@@ -1,8 +1,9 @@
 # ADR 0004: Terraform baseline and local Azure discovery
 
-- Status: Accepted future direction
+- Status: Accepted; baseline implemented
 - Date: 2026-09-20
-- Scope: Future work; no implementation is claimed here.
+- Updated: 2026-10-07
+- Scope: Incremental implementation; explicit backend metadata diagnostics implemented.
 
 ## Context
 
@@ -21,9 +22,10 @@ but it will not grant roles, activate access, or hide a change in scope.
 The Bivrost discovery and diagnostic paths will not implicitly download or
 inspect Terraform state, migrate a backend, or acquire a state lock. A user
 who explicitly runs ordinary Terraform retains Terraform's normal behavior,
-including `plan` state reads and locks. The baseline includes ordinary `kubectl` and Terraform commands without an
-extra kube enable ceremony. If the Azure Kubernetes target is unavailable, a
-session that can otherwise run Terraform remains usable and reports the
+including `plan` state reads and locks. The baseline includes ordinary
+`kubectl` and Terraform commands without an extra kube enable ceremony. If the
+Azure Kubernetes target is unavailable, a session that can otherwise run
+Terraform remains usable and reports the
 Kubernetes limitation clearly. It never falls back to the ambient Kubernetes
 context.
 
@@ -42,6 +44,59 @@ Users can inspect every meaningful command and retain ownership of Terraform
 state and backends. A future implementation cannot assume that Azure
 Kubernetes is available and cannot let that limitation abort an otherwise
 Terraform-capable session.
+
+## Implementation progress
+
+Bivrost supports exact session-only private host routes and
+read-only `bivrost list subscriptions [--refresh]` using the local Azure CLI
+identity. Listing does not select a subscription or change project settings.
+Backend and provider subscription selection remains owned by the project;
+there is no implicit `ARM_SUBSCRIPTION_ID` or global `az account set` override.
+
+Kubernetes preparation remains automatic. Missing Kubernetes tools and AKS
+credential acquisition failures permit a session with an isolated empty
+kubeconfig. Cancellation and generated-config integrity or local-file safety
+failures remain fatal. The configured Kubernetes target is retained for a
+fresh attempt on reconnect; `doctor` reports the unavailable capability without
+probing an ambient context. Shared transport failures still end the session.
+
+`bivrost doctor terraform` accepts an explicit subscription, storage account
+and container. It derives the Blob endpoint from the active supported Azure CLI
+cloud and uses `az storage container show --auth-mode login` with suppressed
+output. Microsoft documents this command as returning the named container's
+system properties and user-defined metadata without its blob list, and documents
+`login` mode as Microsoft Entra authorization rather than storage-key fallback:
+[Get Container Properties](https://learn.microsoft.com/rest/api/storageservices/get-container-properties),
+[Azure CLI data authorization](https://learn.microsoft.com/azure/storage/blobs/authorize-data-operations-cli).
+The diagnostic strips storage key, SAS, connection-string and endpoint
+environment variables before invoking Azure CLI. It does not require Terraform,
+select a global subscription, set provider variables, enumerate or read blobs,
+download state, run init, or acquire a state lock.
+
+Inside a Bivrost session, the diagnostic authenticates the active controller
+status and forces the Azure command through that session's proxy. It reports
+whether the cloud-derived endpoint has an exact private route. Outside a session,
+ambient network and proxy settings remain visible as an unverified route. A
+failed container-properties request reports possible login, data-plane access,
+target, cloud and network causes without guessing which caused an Azure 403.
+Missing private routes produce a `bivrost switch` suggestion in supported
+named-environment sessions, including existing private routes and enabled ACR.
+When the original target or login options cannot be reconstructed safely, the
+hint supplies an exact `--private-host` option for the original connection
+command instead. The diagnostic does not modify routes or assume
+that every backend requires private routing. Runtime route distribution remains
+part of Heimdal, not a new local catalogue requirement.
+
+Probe failures may receive fixed guidance for locally detected timeouts or
+missing tools and narrowly recognised CLI login/network errors. A bounded
+in-memory stderr sample is used only for classification, never displayed or
+logged. Unknown or truncated output retains generic guidance. A network error
+does not establish whether the failed request was to storage, identity or a proxy.
+
+Single command execution is provided by `bivrost run`
+([ADR 0016](0016-single-command-execution.md)). Backend discovery beyond the
+explicit diagnostic is deferred. Neither requires Heimdal; later runtime
+metadata can supply the same connection profile inputs.
 
 ## Alternatives considered
 

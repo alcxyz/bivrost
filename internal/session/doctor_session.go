@@ -20,12 +20,31 @@ import (
 // Status comes from the authenticated connection owner, not a mutable catalogue
 // or a shell badge. It contains connection metadata and no authentication tokens.
 type doctorSessionStatus struct {
-	Kubeconfig     string
-	Config         profile.Profile
-	Enabled        bool
-	LoginRefreshed bool
-	Machine        bool
-	Environment    map[string]string
+	KubernetesUnavailable bool
+	Kubeconfig            string
+	Config                profile.Profile
+	// LocalPrivateHosts are the profile and command-line routes. Config also
+	// contains routes downloaded from Heimdal for this session only.
+	LocalPrivateHosts  []string
+	ProfileEnvironment string
+	Enabled            bool
+	LoginRefreshed     bool
+	Machine            bool
+	Environment        map[string]string
+}
+
+// A catalogue profile can approach profile.MaxCatalogueBytes, and the status
+// repeats its routes beside the full configuration and Heimdal's bounded
+// routes, so allow twice that size with headroom.
+const maxSessionStatusSize = 4 * profile.MaxCatalogueBytes
+
+// localRoutes falls back to all routes for a session started by an older
+// Bivrost, which did not report its local routes separately.
+func (s *doctorSessionStatus) localRoutes() []string {
+	if s.LocalPrivateHosts == nil {
+		return s.Config.PrivateHosts
+	}
+	return s.LocalPrivateHosts
 }
 
 func currentDoctorSession(ctx context.Context) (*doctorSessionStatus, error) {
@@ -40,7 +59,7 @@ func currentDoctorSession(ctx context.Context) (*doctorSessionStatus, error) {
 		return nil, errors.New("active session status is unavailable; reconnect or supply --env or --config")
 	}
 	var status doctorSessionStatus
-	if err = json.NewDecoder(io.LimitReader(response.Body, 65536)).Decode(&status); err != nil {
+	if err = json.NewDecoder(io.LimitReader(response.Body, maxSessionStatusSize)).Decode(&status); err != nil {
 		return nil, errors.New("invalid session status; reconnect")
 	}
 	if err = status.Config.ValidatePlatform(); err != nil {
@@ -74,16 +93,27 @@ func runDoctor(ctx context.Context, command cli.Command, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if status != nil {
-			selected, _ := json.Marshal(c)
-			active, _ := json.Marshal(status.Config)
-			if !bytes.Equal(selected, active) {
-				status = nil
-			}
+		if status != nil && !sessionUsesProfile(status, c) {
+			status = nil
 		}
 	}
 	c.SkipPullProbe = command.NoPull
 	return platformDoctorWithSession(ctx, c, out, status)
+}
+
+// The session's routes extend the profile's with command-line and Heimdal
+// routes, so compare routes only with the session's local ones.
+func sessionUsesProfile(status *doctorSessionStatus, c profile.Profile) bool {
+	for _, host := range c.PrivateHosts {
+		if !containsExactHost(status.localRoutes(), host) {
+			return false
+		}
+	}
+	active := status.Config
+	active.PrivateHosts, c.PrivateHosts = nil, nil
+	selected, _ := json.Marshal(c)
+	connected, _ := json.Marshal(active)
+	return bytes.Equal(selected, connected)
 }
 
 func doctorSessionEnvironment(c profile.Profile, status *doctorSessionStatus) bool {

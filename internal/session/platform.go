@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -51,6 +52,7 @@ type platformServices struct {
 	startPodman       func(context.Context, profile.Profile, string) (*podmanSession, error)
 	loginPodman       func(context.Context, profile.Profile, *podmanSession) error
 	checkRegistry     func(context.Context, profile.Profile) error
+	fetchHeimdal      func(context.Context, profile.Profile) ([]string, error)
 	environ           func() []string
 	selectShell       func() (string, []string, error)
 	reservePort       func(int) (net.Listener, error)
@@ -59,6 +61,7 @@ type platformServices struct {
 	prepareKubeconfig func(context.Context, profile.Profile, string, int) (kubeTarget, error)
 	startSSH          func(context.Context, []string) (*platformProcess, error)
 	startShell        func(context.Context, string, []string, []string) (*platformProcess, error)
+	startCommand      func(context.Context, *sessionCommand, []string) (*platformProcess, error)
 	waitForward       func(context.Context, string, *platformProcess) error
 }
 
@@ -97,25 +100,43 @@ func platformConnect(ctx context.Context, c profile.Profile) error {
 
 func platformConnectLoop(ctx context.Context, c profile.Profile, shellRunning *atomic.Bool, services platformServices) error {
 	prompt := c.Prompt
+	published := false
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		c.Prompt = prompt
-		err := platformConnectWith(ctx, c, shellRunning, services)
+		err := platformConnectWithPublication(ctx, c, shellRunning, services, published)
 		var reconnect *switchReconnectError
 		if !errors.As(err, &reconnect) {
 			return err
 		}
+		published = reconnect.published
 		c = reconnect.config
 		if c.RequiresPIM {
-			fmt.Println("This environment requires PIM activation. Activate your eligible access before connecting; this tool does not grant or activate permissions.")
+			fmt.Fprintln(os.Stderr, "This environment requires PIM activation. Activate your eligible access before connecting; this tool does not grant or activate permissions.")
 		}
 	}
 }
 
 func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *atomic.Bool, services platformServices) error {
+	return platformConnectWithPublication(ctx, c, shellRunning, services, false)
+}
+
+func platformConnectWithPublication(ctx context.Context, c profile.Profile, shellRunning *atomic.Bool, services platformServices, resumePublication bool) error {
+	return platformSession(ctx, c, shellRunning, services, resumePublication, nil)
+}
+
+// platformSession owns one session's resources. With a command, it runs that
+// command in place of the interactive shell: no prompt, controller or banner,
+// and progress goes to stderr so the command's stdout stays its own.
+func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomic.Bool, services platformServices, resumePublication bool, command *sessionCommand) error {
 	defer func() { diagnostics.Event(ctx, diagnostics.EventCleanup) }()
+	runCommand := command != nil
+	var out io.Writer = os.Stdout
+	if runCommand {
+		out = os.Stderr
+	}
 	if shellinit.EnvironmentValue(services.environ(), "BIVROST_SESSION") != "" {
 		return errors.New("a Bivrost platform session is already active; exit it before starting another")
 	}
@@ -154,13 +175,22 @@ func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *a
 
 	var target *kubeTarget
 	var kubeconfigPath string
+	var kubeUnavailable *kubeUnavailableError
 	if c.AKS != nil {
 		prepared, err := services.prepareKubeconfig(ctx, c, bastion.directory, apiPort)
-		if err != nil {
+		if err == nil {
+			target = &prepared
+			kubeconfigPath = prepared.path
+		} else if ctx.Err() != nil {
+			return ctx.Err()
+		} else if !errors.As(err, &kubeUnavailable) {
 			return err
+		} else {
+			kubeconfigPath, err = writeEmptyKubeconfig(bastion.directory)
+			if err != nil {
+				return err
+			}
 		}
-		target = &prepared
-		kubeconfigPath = prepared.path
 	} else {
 		kubeconfigPath, err = writeEmptyKubeconfig(bastion.directory)
 		if err != nil {
@@ -200,13 +230,57 @@ func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *a
 
 	finishForward(nil)
 	diagnostics.Event(ctx, diagnostics.EventForwardReady)
-	shellName, shellArgs, err := services.selectShell()
-	if err != nil {
-		return err
+	// Keep the profile and command-line routes apart from Heimdal routes, which
+	// apply to this session only.
+	// Never nil, so the status distinguishes no local routes from an older session.
+	localPrivateHosts := append([]string{}, c.PrivateHosts...)
+	if c.Heimdal != nil {
+		if services.fetchHeimdal == nil {
+			return errors.New("Heimdal reader is unavailable")
+		}
+		fmt.Fprintf(out, "Fetching Heimdal metadata for %s from %s/%s/%s...\n", c.Heimdal.Environment, c.Heimdal.Account, c.Heimdal.ContainerName(), c.Heimdal.BlobPrefix())
+		hosts, fetchErr := services.fetchHeimdal(ctx, c)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if fetchErr != nil {
+			if !c.Heimdal.AllowLocalFallback {
+				return fmt.Errorf("Heimdal metadata required: %w", fetchErr)
+			}
+			fmt.Fprintf(os.Stderr, "Heimdal refresh failed: %v. Using explicitly allowed local configuration only; remote metadata routes are unavailable.\n", fetchErr)
+		} else {
+			updated, err := withPrivateHosts(c, hosts)
+			if err != nil {
+				return errors.New("Heimdal supplied invalid private routes")
+			}
+			// Replace the bootstrap router before starting any user shell, registry
+			// activation or controller. Never mutate an active session's routes.
+			proxy.close()
+			proxy, err = services.startProxy(ctx, updated)
+			if err != nil {
+				return errors.New("could not start the validated Heimdal session proxy")
+			}
+			defer proxy.close()
+			c = updated
+			fmt.Fprintln(out, "Heimdal metadata validated; private routes are ready for this session.")
+		}
+	}
+	var shellName string
+	var shellArgs []string
+	if runCommand {
+		shellName, shellArgs = command.argv[0], command.argv[1:]
+	} else {
+		shellName, shellArgs, err = services.selectShell()
+		if err != nil {
+			return err
+		}
 	}
 	shellEnv := platformEnvironment(services.environ(), c.ProxyURL(), kubeconfigPath)
 	activation := newACRActivation(ctx, c, services, bastion.directory, shellName)
+	activation.localPrivateHosts = localPrivateHosts
 	activation.kubeconfig = kubeconfigPath
+	activation.publicationRequested = resumePublication
+	activation.kubernetesUnavailable = kubeUnavailable != nil
 	defer activation.close()
 	if c.ACRSession {
 		if err := activation.enable(); err != nil {
@@ -214,9 +288,17 @@ func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *a
 		}
 		shellEnv = activation.session.environment(shellEnv)
 	}
+	if runCommand {
+		return runSessionCommand(ctx, shellRunning, services, command, shellEnv, kubeUnavailable, activation, proxy, ssh, bastion)
+	}
 	shellEnv, err = activation.listen(shellEnv)
 	if err != nil {
 		return err
+	}
+	// The session has already switched, so a failed publication must not end it.
+	var publishErr error
+	if resumePublication && c.AKS != nil && !activation.kubernetesUnavailable {
+		_, publishErr = activation.publish()
 	}
 	shellArgs, shellEnv, err = shellinit.PreparePrompt(bastion.directory, shellName, shellArgs, shellEnv, c)
 	if err != nil {
@@ -225,7 +307,9 @@ func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *a
 	fmt.Println(shellinit.Label(c))
 
 	fmt.Println("Platform connection ready. Commands in the local shell use the session HTTPS proxy.")
-	if target == nil {
+	if kubeUnavailable != nil {
+		fmt.Println("Kubernetes is unavailable for this session: " + kubeUnavailable.Error() + ". KUBECONFIG points to an isolated empty configuration.")
+	} else if target == nil {
 		fmt.Println("No AKS cluster is configured; KUBECONFIG points to an empty session configuration.")
 	} else {
 		fmt.Println("Kubernetes API forwarding is ready at " + profile.Loopback(apiPort) + ".")
@@ -235,6 +319,13 @@ func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *a
 		fmt.Println(podmanBuildGuidance)
 	} else {
 		fmt.Println("Enable Podman registry access with bivrost acr enable in supported shells, or reconnect with --acr. Exit to disconnect.")
+	}
+	if activation.isPublished() {
+		fmt.Println("Kubernetes session published for local clients; use bivrost session path to see its new path.")
+	} else if publishErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: session sharing was not resumed: %v. The session remains connected; retry with bivrost session publish.\n", publishErr)
+	} else if resumePublication {
+		fmt.Println("Session sharing was not resumed because Kubernetes is unavailable.")
 	}
 	fmt.Println("Azure CLI keeps its selected subscription; use --subscription when a command targets another subscription.")
 
@@ -270,7 +361,7 @@ func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *a
 		err := shell.err()
 		if isSwitchShellExit(err) {
 			if target, ok := activation.pendingSwitch(); ok {
-				return &switchReconnectError{config: target}
+				return &switchReconnectError{config: target, published: activation.wantsPublication()}
 			}
 		}
 		if err != nil {
@@ -308,6 +399,7 @@ func defaultPlatformServices() platformServices {
 		startPodman:   startPodmanSession,
 		loginPodman:   loginPodmanSession,
 		checkRegistry: registryCheck,
+		fetchHeimdal:  fetchHeimdalRoutes,
 		environ:       os.Environ,
 		selectShell:   nativeShell,
 		reservePort: func(port int) (net.Listener, error) {
@@ -344,8 +436,9 @@ func defaultPlatformServices() platformServices {
 			}
 			return &platformProcess{done: process.done, err: func() error { return process.err }, stop: process.stop}, nil
 		},
-		startShell:  startPlatformShell,
-		waitForward: waitPlatformForward,
+		startShell:   startPlatformShell,
+		startCommand: startPlatformCommand,
+		waitForward:  waitPlatformForward,
 	}
 }
 
@@ -366,7 +459,7 @@ func platformEnvironment(env []string, proxy, kubeconfigPath string) []string {
 	for _, entry := range env {
 		key, _, _ := strings.Cut(entry, "=")
 		switch strings.ToUpper(key) {
-		case "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "BIVROST_SESSION", "KUBECONFIG":
+		case "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "BIVROST_SESSION", runMarker, "KUBECONFIG":
 			continue
 		}
 		result = append(result, entry)
@@ -381,9 +474,27 @@ func platformEnvironment(env []string, proxy, kubeconfigPath string) []string {
 
 func writeEmptyKubeconfig(directory string) (string, error) {
 	path := filepath.Join(directory, "kubeconfig-empty")
-	if err := os.WriteFile(path, []byte(emptyKubeconfig), 0o600); err != nil {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
 		return "", errors.New("could not create the isolated empty kubeconfig")
 	}
+	complete := false
+	defer func() {
+		_ = f.Close()
+		if !complete {
+			_ = os.Remove(path)
+		}
+	}()
+	if err := f.Chmod(0o600); err != nil {
+		return "", errors.New("could not secure the isolated empty kubeconfig")
+	}
+	if _, err := f.Write([]byte(emptyKubeconfig)); err != nil {
+		return "", errors.New("could not write the isolated empty kubeconfig")
+	}
+	if err := f.Close(); err != nil {
+		return "", errors.New("could not finish the isolated empty kubeconfig")
+	}
+	complete = true
 	return path, nil
 }
 

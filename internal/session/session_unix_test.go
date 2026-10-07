@@ -6,6 +6,8 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -100,6 +102,51 @@ func TestOpenBastionCleansSessionAfterTunnelStartFailure(t *testing.T) {
 	_, err := openBastion(context.Background(), c)
 	if err == nil || !strings.Contains(err.Error(), "could not start Azure Bastion tunnel") {
 		t.Fatalf("openBastion() error = %v, want tunnel start error", err)
+	}
+	assertNoSessionDirectories(t, stateRoot)
+}
+
+func TestOpenBastionExplainsTunnelFailureWithoutAzureOutput(t *testing.T) {
+	toolDirectory := t.TempDir()
+	writeTestExecutable(t, filepath.Join(toolDirectory, "az"), "#!/bin/sh\n"+
+		"echo \"ERROR: (AuthorizationFailed) The client 'SECRET_MARKER@example.com' does not have authorization\" >&2\n"+
+		"exit 1\n")
+	writeTestExecutable(t, filepath.Join(toolDirectory, "ssh"), "#!/bin/sh\nexit 0\n")
+	stateRoot := prepareOpenBastionTest(t, toolDirectory)
+	c := validSessionConfig()
+	c.SSHUser = "azureuser"
+	c.IdentityFile = filepath.Join(t.TempDir(), "id_ed25519")
+
+	_, err := openBastion(context.Background(), c)
+	if err == nil || !strings.Contains(err.Error(), "AuthorizationFailed") || !strings.Contains(err.Error(), "PIM") {
+		t.Fatalf("openBastion() error = %v, want authorization guidance", err)
+	}
+	if strings.Contains(err.Error(), "SECRET_MARKER") {
+		t.Fatalf("openBastion() exposed Azure CLI output: %v", err)
+	}
+	assertNoSessionDirectories(t, stateRoot)
+}
+
+func TestOpenBastionReportsCancellationNotTunnelExit(t *testing.T) {
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skip("sleep is unavailable")
+	}
+	toolDirectory := t.TempDir()
+	writeTestExecutable(t, filepath.Join(toolDirectory, "az"), "#!/bin/sh\n"+
+		"echo 'ERROR: (AuthorizationFailed) late' >&2\n"+
+		"exec "+sleep+" 30\n")
+	writeTestExecutable(t, filepath.Join(toolDirectory, "ssh"), "#!/bin/sh\nexit 0\n")
+	stateRoot := prepareOpenBastionTest(t, toolDirectory)
+	c := validSessionConfig()
+	c.SSHUser = "azureuser"
+	c.IdentityFile = filepath.Join(t.TempDir(), "id_ed25519")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(300*time.Millisecond, cancel)
+	_, err = openBastion(ctx, c)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("openBastion() error = %v, want context.Canceled", err)
 	}
 	assertNoSessionDirectories(t, stateRoot)
 }
@@ -260,6 +307,23 @@ func TestSignalCleanupHelper(t *testing.T) {
 		// The parent asserts orderly return, child termination, and file cleanup;
 		// it must not depend on which ready channel wins that race.
 		_ = Run([]string{"connect", "--config", args[1]}, "bivrost dev")
+	case "run":
+		if len(args) < 3 {
+			t.Fatal("missing run configuration or command")
+		}
+		// Mirror the executable's exit mapping for bivrost run.
+		err := Run(append([]string{"run", "--config", args[1], "--"}, args[2:]...), "bivrost dev")
+		var exit *ExitError
+		if errors.As(err, &exit) {
+			if exit.Err != nil {
+				fmt.Fprintln(os.Stderr, "bivrost:", exit.Err)
+			}
+			os.Exit(exit.Code)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.Exit(0)
 	case "tool":
 		if len(args) < 2 {
 			t.Fatal("missing synthetic tool name")

@@ -34,12 +34,16 @@ type acrActivation struct {
 	mu                       sync.Mutex
 	session                  *podmanSession
 	config                   profile.Profile
+	localPrivateHosts        []string
 	services                 platformServices
 	directory, shell, script string
 	kubeconfig               string
+	kubernetesUnavailable    bool
 	server                   *http.Server
 	done                     chan struct{}
 	pending                  *profile.Profile
+	publication              *sessionPublication
+	publicationRequested     bool
 }
 
 func activationShell(shell string) bool {
@@ -167,8 +171,12 @@ func (a *acrActivation) listen(env []string) ([]string, error) {
 		return nil, errors.New("cannot write session control capability")
 	}
 	a.server = &http.Server{ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 3 * time.Minute, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || (r.URL.Path != "/enable" && r.URL.Path != "/status" && r.URL.Path != "/switch") || r.Header.Get("Origin") != "" || subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+control.Token)) != 1 {
+		if r.Method != "POST" || (r.URL.Path != "/enable" && r.URL.Path != "/status" && r.URL.Path != "/switch" && r.URL.Path != "/publish" && r.URL.Path != "/unpublish" && r.URL.Path != "/publication-path") || r.Header.Get("Origin") != "" || subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+control.Token)) != 1 {
 			http.Error(w, "session request rejected", http.StatusForbidden)
+			return
+		}
+		if r.URL.Path == "/publish" || r.URL.Path == "/unpublish" || r.URL.Path == "/publication-path" {
+			a.handlePublication(w, r)
 			return
 		}
 		if r.URL.Path == "/switch" {
@@ -211,7 +219,7 @@ func (a *acrActivation) listen(env []string) ([]string, error) {
 		if r.URL.Path == "/status" {
 			a.mu.Lock()
 			defer a.mu.Unlock()
-			state := doctorSessionStatus{Config: a.config, Kubeconfig: a.kubeconfig}
+			state := doctorSessionStatus{Config: a.config, LocalPrivateHosts: a.localPrivateHosts, ProfileEnvironment: a.config.Environment, Kubeconfig: a.kubeconfig, KubernetesUnavailable: a.kubernetesUnavailable}
 			if a.ctx.Err() != nil {
 				http.Error(w, "session ended", http.StatusGone)
 				return
@@ -260,6 +268,9 @@ func (a *acrActivation) close() {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.publication != nil {
+		a.publication.close()
+	}
 	if a.session != nil {
 		a.session.close()
 	}
@@ -281,6 +292,9 @@ func sessionRequest(ctx context.Context, endpoint string) (*http.Response, error
 }
 
 func sessionRequestBody(ctx context.Context, endpoint string, body io.Reader) (*http.Response, error) {
+	if insideRun() {
+		return nil, errors.New("this command is not available inside bivrost run; use a bivrost connect shell")
+	}
 	path := os.Getenv("BIVROST_CONTROL_FILE")
 	if os.Getenv("BIVROST_SESSION") == "" || path == "" {
 		return nil, errors.New("this command requires an active Bivrost Bash, Zsh, or PowerShell session")

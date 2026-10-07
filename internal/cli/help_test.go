@@ -19,6 +19,10 @@ func TestContextualHelpRouting(t *testing.T) {
 		{[]string{"help", "switch"}, "switch"},
 		{[]string{"config", "init", "-h"}, "config init"},
 		{[]string{"list", "--help"}, "list"},
+		{[]string{"list", "subscriptions", "--help"}, "list subscriptions"},
+		{[]string{"help", "list", "subscriptions"}, "list subscriptions"},
+		{[]string{"doctor", "terraform", "--help"}, "doctor terraform"},
+		{[]string{"help", "doctor", "terraform"}, "doctor terraform"},
 		{[]string{"environments", "--help"}, "list"},
 		{[]string{"env", "--help"}, "list"},
 		{[]string{"help", "envs"}, "list"},
@@ -40,6 +44,33 @@ func TestContextualHelpRouting(t *testing.T) {
 	}
 }
 
+func TestTerraformDoctorHelpStatesExplicitReadOnlyBoundary(t *testing.T) {
+	t.Parallel()
+	text := HelpText("doctor terraform")
+	for _, want := range []string{
+		"--subscription NAME_OR_ID", "--account NAME", "--container NAME",
+		"Microsoft Entra login", "does not select a subscription globally",
+		"list or read blobs", "acquire a state lock", "ambient network and proxy settings",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("Terraform doctor help missing %q", want)
+		}
+	}
+}
+
+func TestSubscriptionHelpDescribesReadOnlyDiscovery(t *testing.T) {
+	t.Parallel()
+	if !strings.Contains(HelpText("list"), "bivrost list subscriptions [--refresh]") {
+		t.Fatal("list help does not point to subscription discovery")
+	}
+	text := HelpText("list subscriptions")
+	for _, want := range []string{"Usage: bivrost list subscriptions [--refresh]", "current Azure CLI login", "does not change the selected subscription", "local subscription cache"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("subscription help missing %q", want)
+		}
+	}
+}
+
 func TestHelpDescribesPodmanOnly(t *testing.T) {
 	for _, topic := range []string{"", "acr", "connect", "ssh", "doctor", "acr proxy", "acr connect", "acr login", "acr doctor", "config init"} {
 		text := HelpText(topic)
@@ -51,5 +82,25 @@ func TestHelpDescribesPodmanOnly(t *testing.T) {
 		if strings.HasPrefix(topic, "acr") && !strings.Contains(text, "Podman") {
 			t.Errorf("help for %q does not describe Podman", topic)
 		}
+	}
+}
+
+func TestHelpScopesPrivateHostsToNewSessions(t *testing.T) {
+	for _, topic := range []string{"connect", "acr connect", "switch"} {
+		text := HelpText(topic)
+		if !strings.Contains(text, "--private-host HOST") || !strings.Contains(text, "exact DNS host") {
+			t.Errorf("help for %q does not describe exact private host routing", topic)
+		}
+	}
+	for _, topic := range []string{"doctor", "ssh", "acr proxy", "acr login", "acr doctor"} {
+		if strings.Contains(HelpText(topic), "--private-host") {
+			t.Errorf("help for %q advertises unsupported private host routing", topic)
+		}
+	}
+	if text := HelpText("connect"); !strings.Contains(text, "not saved") {
+		t.Fatal("connect help does not state that private host additions are temporary")
+	}
+	if text := HelpText("switch"); !strings.Contains(text, "not carried over") {
+		t.Fatal("switch help does not state that private host additions are not inherited")
 	}
 }

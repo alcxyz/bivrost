@@ -31,3 +31,8 @@ the user's XDG state area and is separate from credentials.
 
 Global kubeconfig merging, permanent proxy variables, and shared engine
 configuration are outside this boundary.
+
+Session ownership describes lifecycle and configuration isolation, not isolation
+from other local users. Ordinary loopback forwarding is unauthenticated and
+requires a trusted host. The authenticated controller and publication gateway
+do not secure alternate backing forwards. See [security boundaries](../security-boundaries.md).

@@ -27,9 +27,13 @@ reconcile expired and still-present records with the provider before deciding
 whether another cleanup attempt is appropriate.
 
 Recovery records may retain activation IDs and other non-secret references,
-but never access tokens or credential material. The metadata-cache exception is a restricted recovery record under the user's
+but never access tokens or credential material. A PIM recovery record is not a
+metadata cache and contains no metadata document content. It lives under the user's
 XDG state directory, containing ownership, identity, scope and expiry references.
 Delete completed or expired records after reconciliation.
+
+For PIM group membership, the activation covers the group and all permissions
+assigned to it; it cannot narrow an individual activation to one of those grants.
 
 ## Consequences
 
