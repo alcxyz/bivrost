@@ -369,7 +369,8 @@ catalogue entry. For example:
     "environment": "example",
     "container": "heimdal",
     "prefix": "environments/example",
-    "allow_local_fallback": false
+    "allow_local_fallback": false,
+    "allowed_route_suffixes": ["internal.example.net"]
   }
 }
 ```
@@ -400,6 +401,19 @@ any routes from an earlier download. This includes visibly reported permission
 denials and validation failures. Cancellation always stops setup. Profiles
 without `heimdal` retain the normal local-only behavior. Standalone `ssh` and
 proxy commands do not retrieve Heimdal metadata.
+
+Routed connections keep end-to-end TLS, and the session proxy allows only port
+443. No route, local or downloaded, may name a Microsoft sign-in, management or
+Graph endpoint in the public, US Government or China clouds. The optional
+`allowed_route_suffixes` list narrows what metadata may route: every downloaded
+route must equal a listed suffix or end with `.` followed by one, so
+`internal.example.net` permits `db.internal.example.net` but not
+`badinternal.example.net`. If any route is outside the list, the whole revision
+fails validation and is handled like any other validation failure, including
+`allow_local_fallback`. Suffixes are exact lowercase DNS names with at least
+two labels; an empty list is rejected. Without the field, any otherwise valid
+route is accepted. Profile `private_hosts` and `--private-host` routes are not
+subject to the list.
 
 ## Architecture diagrams
 

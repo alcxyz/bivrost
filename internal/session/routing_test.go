@@ -19,6 +19,18 @@ func TestPrivateHostsValidationExcludesPublicControlPlane(t *testing.T) {
 			t.Errorf("accepted invalid private host %q", host)
 		}
 	}
+	for _, host := range []string{
+		"login.microsoft.com", "login.windows.net", "login.microsoftonline.us",
+		"login.chinacloudapi.cn", "login.partner.microsoftonline.cn",
+		"management.core.windows.net", "management.usgovcloudapi.net", "management.chinacloudapi.cn",
+		"graph.microsoft.com", "graph.microsoft.us", "dod-graph.microsoft.us",
+		"microsoftgraph.chinacloudapi.cn", "graph.windows.net",
+	} {
+		c.PrivateHosts = []string{host}
+		if c.ValidatePrivateHosts() == nil {
+			t.Errorf("accepted Microsoft sign-in, management or Graph endpoint %q", host)
+		}
+	}
 }
 
 func TestProxyIdentityIncludesPrivateRoutes(t *testing.T) {

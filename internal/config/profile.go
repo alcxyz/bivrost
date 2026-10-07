@@ -114,13 +114,38 @@ func (c Profile) ValidatePlatform() error {
 	return c.ValidatePrivateHosts()
 }
 
+// Microsoft sign-in, management and Graph endpoints in the public, US
+// Government and China clouds. Routing them through a session tunnel could
+// capture authentication or control-plane traffic, so no route may name them.
+var publicControlPlaneHosts = map[string]bool{
+	"login.microsoftonline.com":         true,
+	"login.microsoft.com":               true,
+	"login.windows.net":                 true,
+	"login.microsoftonline.us":          true,
+	"login.chinacloudapi.cn":            true,
+	"login.partner.microsoftonline.cn":  true,
+	"management.azure.com":              true,
+	"management.core.windows.net":       true,
+	"management.usgovcloudapi.net":      true,
+	"management.core.usgovcloudapi.net": true,
+	"management.chinacloudapi.cn":       true,
+	"management.core.chinacloudapi.cn":  true,
+	"graph.microsoft.com":               true,
+	"graph.microsoft.us":                true,
+	"dod-graph.microsoft.us":            true,
+	"microsoftgraph.chinacloudapi.cn":   true,
+	"graph.chinacloudapi.cn":            true,
+	"graph.windows.net":                 true,
+	"graph.microsoftazure.us":           true,
+}
+
 func (c Profile) ValidatePrivateHosts() error {
 	for _, host := range c.PrivateHosts {
 		if !proxy.ValidRemoteDNSName(host) {
 			return errors.New("private_hosts must contain exact lowercase DNS names without URLs, wildcards, IP addresses, or ports")
 		}
-		if host == "management.azure.com" || host == "login.microsoftonline.com" {
-			return errors.New("private_hosts must not contain public Azure management or login endpoints")
+		if publicControlPlaneHosts[host] {
+			return errors.New("private_hosts must not contain public Microsoft sign-in, management or Graph endpoints")
 		}
 	}
 	return nil

@@ -136,7 +136,9 @@ planned bootstrap command or replace the current publication interface.
    Explicit local fallback remains subject to those resources' authorization.
    A configured source failure stops setup unless `allow_local_fallback` is
    explicitly enabled. Even then, permission and validation failures remain
-   visible, and only existing local routes are used. See the
+   visible, and only existing local routes are used. Set
+   `allowed_route_suffixes` in the bootstrap to the domains your metadata may
+   route; a revision with any route outside them fails validation. See the
    [connection profile example](../README.md#fetch-metadata-when-connecting-experimental).
 5. **Maintain through reviewed CI (planned publication lifecycle).** Keep the
    authoritative deployment metadata in the adopter's own repository. Validate

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+
+	"github.com/alcxyz/bivrost/internal/proxy"
 )
 
 // HeimdalSource is trusted bootstrap configuration, never supplied by metadata.
@@ -14,7 +16,12 @@ type HeimdalSource struct {
 	Environment        string `json:"environment"`
 	Prefix             string `json:"prefix,omitempty"`
 	AllowLocalFallback bool   `json:"allow_local_fallback,omitempty"`
+	// AllowedRouteSuffixes, when set, limits the routes accepted from
+	// metadata. Local and command-line routes are not subject to it.
+	AllowedRouteSuffixes []string `json:"allowed_route_suffixes,omitempty"`
 }
+
+const maxAllowedRouteSuffixes = 64
 
 var metadataAccountPattern = regexp.MustCompile(`^[a-z0-9]{3,24}$`)
 var metadataContainerPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$`)
@@ -51,5 +58,29 @@ func (s HeimdalSource) Validate() error {
 			return errors.New("invalid Heimdal prefix")
 		}
 	}
+	// An empty list is rejected rather than read as "no restriction".
+	if s.AllowedRouteSuffixes != nil && (len(s.AllowedRouteSuffixes) == 0 || len(s.AllowedRouteSuffixes) > maxAllowedRouteSuffixes) {
+		return errors.New("Heimdal allowed_route_suffixes must list between 1 and 64 domain suffixes when set")
+	}
+	for _, suffix := range s.AllowedRouteSuffixes {
+		if !proxy.ValidRemoteDNSName(suffix) {
+			return errors.New("Heimdal allowed_route_suffixes must contain lowercase DNS names of at least two labels, without wildcards, leading dots, IP addresses, or ports")
+		}
+	}
 	return nil
+}
+
+// AllowsRoute reports whether a metadata route is within the allowed suffixes:
+// equal to one, or below one at a label boundary. Routes are always allowed
+// when no suffixes are configured.
+func (s HeimdalSource) AllowsRoute(host string) bool {
+	if s.AllowedRouteSuffixes == nil {
+		return true
+	}
+	for _, suffix := range s.AllowedRouteSuffixes {
+		if host == suffix || strings.HasSuffix(host, "."+suffix) {
+			return true
+		}
+	}
+	return false
 }

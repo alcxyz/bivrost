@@ -12,8 +12,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	profile "github.com/alcxyz/bivrost/internal/config"
+	"github.com/alcxyz/bivrost/internal/heimdal"
 	shellinit "github.com/alcxyz/bivrost/internal/shell"
 )
 
@@ -291,6 +293,43 @@ func TestPlatformConnectRejectsFailedOrPartialHeimdalRefresh(t *testing.T) {
 			}
 			if state.shellStarts != 0 {
 				t.Fatal("shell started after failed Heimdal refresh")
+			}
+			assertHeimdalTransportCleanup(t, state)
+		})
+	}
+}
+
+func TestPlatformConnectAppliesAllowedRouteSuffixesOnlyToMetadata(t *testing.T) {
+	doc, pointer, _, err := heimdal.Create("example", []string{"outside.example.org"}, time.Now().Add(-time.Minute), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpointFor, read := heimdalTestReaders(pointer, doc)
+	for _, fallback := range []bool{false, true} {
+		t.Run(fmt.Sprintf("fallback=%v", fallback), func(t *testing.T) {
+			c := heimdalPlatformConfig(t)
+			// The local route is outside the list; only metadata routes are checked.
+			c.Heimdal.AllowedRouteSuffixes = []string{"inside.example.net"}
+			c.Heimdal.AllowLocalFallback = fallback
+			state := &heimdalConnectState{fetch: func(ctx context.Context, c profile.Profile) ([]string, error) {
+				return fetchHeimdalRoutesWith(ctx, c, endpointFor, read)
+			}}
+			services := heimdalConnectServices(t, state)
+			var shellRunning atomic.Bool
+
+			err := platformConnectWith(context.Background(), c, &shellRunning, services)
+			if !fallback {
+				if err == nil || !strings.Contains(err.Error(), "Heimdal metadata required") {
+					t.Fatalf("platformConnectWith() error = %v, want required metadata failure", err)
+				}
+				if state.shellStarts != 0 {
+					t.Fatal("shell started after rejected metadata routes")
+				}
+			} else if err != nil || state.shellStarts != 1 {
+				t.Fatalf("platformConnectWith() error = %v, shell starts = %d; want local fallback", err, state.shellStarts)
+			}
+			if len(state.proxyProfiles) != 1 || !reflect.DeepEqual(state.proxyProfiles[0].PrivateHosts, []string{"local.private.example"}) {
+				t.Fatalf("rejected metadata changed session routes: %+v", state.proxyProfiles)
 			}
 			assertHeimdalTransportCleanup(t, state)
 		})
