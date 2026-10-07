@@ -74,7 +74,7 @@ func openBastion(ctx context.Context, c profile.Profile) (_ *bastionSession, res
 	}
 	s.sshConfig = filepath.Join(s.directory, "ssh_config")
 	if c.SSHUser == "" {
-		fmt.Println("Preparing a short-lived Entra SSH certificate using your local Azure login...")
+		fmt.Fprintln(os.Stderr, "Preparing a short-lived Entra SSH certificate using your local Azure login...")
 		finishCredentials := diagnostics.Step(ctx, diagnostics.EventSSHCredentials)
 		e := prepareSSHCertificate(ctx, c, s.sshConfig, s.directory, s.port)
 		finishCredentials(e)
@@ -96,7 +96,7 @@ func openBastion(ctx context.Context, c profile.Profile) (_ *bastionSession, res
 	cmd.Stderr = tunnelErrors
 	// Stderr is a pipe, so a descendant holding it open must not block Wait.
 	cmd.WaitDelay = 5 * time.Second
-	fmt.Println("Opening the Bastion tunnel...")
+	fmt.Fprintln(os.Stderr, "Opening the Bastion tunnel...")
 	s.process, err = startChild(cmd)
 	if err != nil {
 		return nil, errors.New("could not start Azure Bastion tunnel")

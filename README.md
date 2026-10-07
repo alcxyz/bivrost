@@ -89,7 +89,22 @@ directory changes are not carried over. If the new connection fails after
 cleanup, you return to your original terminal. Other shells can use `exit`
 followed by `bivrost connect`.
 
-Repeat `--private-host HOST` on `connect`, `acr connect`, or `switch` when the
+To run a single command without an interactive shell, for example from a
+script, CI job or coding agent, use `bivrost run`:
+
+```text
+bivrost run -e <environment> -- kubectl get pods -A
+bivrost run -e <environment> -- sh -c 'terraform init && terraform plan'
+```
+
+`run` opens the same session as `connect`, runs the command directly (not
+through a shell) and disconnects when it ends. Setup progress goes to stderr,
+so stdout holds only the command's output. The command's exit status is
+returned; Bivrost's own failures use 125, and 126 or 127 mean the command
+could not be executed or found. See `bivrost run --help` and
+[ADR 0016](docs/adr/0016-single-command-execution.md).
+
+Repeat `--private-host HOST` on `connect`, `run`, `acr connect`, or `switch` when the
 selected target needs additional exact private DNS hosts. These additions apply
 only to the new session, are combined with the selected profile's
 `private_hosts`, and are not written to the profile or catalogue. A switch does

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -306,6 +307,23 @@ func TestSignalCleanupHelper(t *testing.T) {
 		// The parent asserts orderly return, child termination, and file cleanup;
 		// it must not depend on which ready channel wins that race.
 		_ = Run([]string{"connect", "--config", args[1]}, "bivrost dev")
+	case "run":
+		if len(args) < 3 {
+			t.Fatal("missing run configuration or command")
+		}
+		// Mirror the executable's exit mapping for bivrost run.
+		err := Run(append([]string{"run", "--config", args[1], "--"}, args[2:]...), "bivrost dev")
+		var exit *ExitError
+		if errors.As(err, &exit) {
+			if exit.Err != nil {
+				fmt.Fprintln(os.Stderr, "bivrost:", exit.Err)
+			}
+			os.Exit(exit.Code)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.Exit(0)
 	case "tool":
 		if len(args) < 2 {
 			t.Fatal("missing synthetic tool name")

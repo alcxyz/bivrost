@@ -5,6 +5,8 @@ package session
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -30,3 +32,32 @@ func prepareInteractive(cmd *exec.Cmd) {
 }
 
 func prepareInteractiveShell(cmd *exec.Cmd) { prepareInteractive(cmd) }
+
+// Console Ctrl+C reaches a run command directly. Windows has no SIGTERM and
+// does not end children with their parent, so cancellation ends the command's
+// whole process tree, such as the session Podman wrapper and Podman itself.
+func prepareRunCommand(cmd *exec.Cmd, _ bool) func() {
+	cmd.WaitDelay = 10 * time.Second
+	cmd.Cancel = func() error {
+		tree := exec.Command(systemTool("taskkill.exe"), "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid))
+		if tree.Run() != nil {
+			return cmd.Process.Kill()
+		}
+		return nil
+	}
+	return func() {}
+}
+
+// Every process attached to the console receives Ctrl+C.
+func terminalForeground() bool { return true }
+
+func signalExitCode(*exec.ExitError) int { return RunFailureExitCode }
+
+// systemTool locates a Windows system utility without depending on PATH.
+func systemTool(name string) string {
+	root := os.Getenv("SystemRoot")
+	if root == "" || !filepath.IsAbs(root) {
+		root = `C:\Windows`
+	}
+	return filepath.Join(root, "System32", name)
+}

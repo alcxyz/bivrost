@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -60,6 +61,7 @@ type platformServices struct {
 	prepareKubeconfig func(context.Context, profile.Profile, string, int) (kubeTarget, error)
 	startSSH          func(context.Context, []string) (*platformProcess, error)
 	startShell        func(context.Context, string, []string, []string) (*platformProcess, error)
+	startCommand      func(context.Context, *sessionCommand, []string) (*platformProcess, error)
 	waitForward       func(context.Context, string, *platformProcess) error
 }
 
@@ -112,7 +114,7 @@ func platformConnectLoop(ctx context.Context, c profile.Profile, shellRunning *a
 		published = reconnect.published
 		c = reconnect.config
 		if c.RequiresPIM {
-			fmt.Println("This environment requires PIM activation. Activate your eligible access before connecting; this tool does not grant or activate permissions.")
+			fmt.Fprintln(os.Stderr, "This environment requires PIM activation. Activate your eligible access before connecting; this tool does not grant or activate permissions.")
 		}
 	}
 }
@@ -122,7 +124,19 @@ func platformConnectWith(ctx context.Context, c profile.Profile, shellRunning *a
 }
 
 func platformConnectWithPublication(ctx context.Context, c profile.Profile, shellRunning *atomic.Bool, services platformServices, resumePublication bool) error {
+	return platformSession(ctx, c, shellRunning, services, resumePublication, nil)
+}
+
+// platformSession owns one session's resources. With a command, it runs that
+// command in place of the interactive shell: no prompt, controller or banner,
+// and progress goes to stderr so the command's stdout stays its own.
+func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomic.Bool, services platformServices, resumePublication bool, command *sessionCommand) error {
 	defer func() { diagnostics.Event(ctx, diagnostics.EventCleanup) }()
+	runCommand := command != nil
+	var out io.Writer = os.Stdout
+	if runCommand {
+		out = os.Stderr
+	}
 	if shellinit.EnvironmentValue(services.environ(), "BIVROST_SESSION") != "" {
 		return errors.New("a Bivrost platform session is already active; exit it before starting another")
 	}
@@ -220,7 +234,7 @@ func platformConnectWithPublication(ctx context.Context, c profile.Profile, shel
 		if services.fetchHeimdal == nil {
 			return errors.New("Heimdal reader is unavailable")
 		}
-		fmt.Printf("Fetching Heimdal metadata for %s from %s/%s/%s...\n", c.Heimdal.Environment, c.Heimdal.Account, c.Heimdal.ContainerName(), c.Heimdal.BlobPrefix())
+		fmt.Fprintf(out, "Fetching Heimdal metadata for %s from %s/%s/%s...\n", c.Heimdal.Environment, c.Heimdal.Account, c.Heimdal.ContainerName(), c.Heimdal.BlobPrefix())
 		hosts, fetchErr := services.fetchHeimdal(ctx, c)
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -244,12 +258,18 @@ func platformConnectWithPublication(ctx context.Context, c profile.Profile, shel
 			}
 			defer proxy.close()
 			c = updated
-			fmt.Println("Heimdal metadata validated; private routes are ready for this session.")
+			fmt.Fprintln(out, "Heimdal metadata validated; private routes are ready for this session.")
 		}
 	}
-	shellName, shellArgs, err := services.selectShell()
-	if err != nil {
-		return err
+	var shellName string
+	var shellArgs []string
+	if runCommand {
+		shellName, shellArgs = command.argv[0], command.argv[1:]
+	} else {
+		shellName, shellArgs, err = services.selectShell()
+		if err != nil {
+			return err
+		}
 	}
 	shellEnv := platformEnvironment(services.environ(), c.ProxyURL(), kubeconfigPath)
 	activation := newACRActivation(ctx, c, services, bastion.directory, shellName)
@@ -262,6 +282,9 @@ func platformConnectWithPublication(ctx context.Context, c profile.Profile, shel
 			return err
 		}
 		shellEnv = activation.session.environment(shellEnv)
+	}
+	if runCommand {
+		return runSessionCommand(ctx, shellRunning, services, command, shellEnv, kubeUnavailable, activation, proxy, ssh, bastion)
 	}
 	shellEnv, err = activation.listen(shellEnv)
 	if err != nil {
@@ -406,8 +429,9 @@ func defaultPlatformServices() platformServices {
 			}
 			return &platformProcess{done: process.done, err: func() error { return process.err }, stop: process.stop}, nil
 		},
-		startShell:  startPlatformShell,
-		waitForward: waitPlatformForward,
+		startShell:   startPlatformShell,
+		startCommand: startPlatformCommand,
+		waitForward:  waitPlatformForward,
 	}
 }
 
