@@ -112,6 +112,8 @@ is accepted.
 
 Only after successful validation, replace the startup router with one combining
 bootstrap and metadata routes, before shell, controller and ACR activation.
+The replacement happens in place on the running proxy listener, so its port is
+never released and rebound; tunnels opened through the startup routes close.
 No active-shell refresh is provided. Metadata expiry is checked at acquisition;
 it does not stop an established session or revoke provider access. Every new
 connection or managed switch fetches again. Responses stay in memory; nothing
