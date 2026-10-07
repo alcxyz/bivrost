@@ -33,9 +33,10 @@ type doctorSessionStatus struct {
 	Environment        map[string]string
 }
 
-// The status repeats the local routes beside the full configuration, so allow
-// for both route lists at their validated maximum.
-const maxSessionStatusSize = 1 << 20
+// A catalogue profile can approach profile.MaxCatalogueBytes, and the status
+// repeats its routes beside the full configuration and Heimdal's bounded
+// routes, so allow twice that size with headroom.
+const maxSessionStatusSize = 4 * profile.MaxCatalogueBytes
 
 // localRoutes falls back to all routes for a session started by an older
 // Bivrost, which did not report its local routes separately.
