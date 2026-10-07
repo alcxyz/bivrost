@@ -150,6 +150,9 @@ func TestSessionCommandsExplainTheyAreUnavailableInsideRun(t *testing.T) {
 		},
 		"session publish": func() error { return runSessionPublication(context.Background(), "publish") },
 		"acr enable":      func() error { return enableSessionACR(context.Background()) },
+		"switch": func() error {
+			return runSwitch(context.Background(), cli.Command{Kind: cli.Switch, Environment: "example"})
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := run(); err == nil || !strings.Contains(err.Error(), "not available inside bivrost run") {

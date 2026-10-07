@@ -232,7 +232,8 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 	diagnostics.Event(ctx, diagnostics.EventForwardReady)
 	// Keep the profile and command-line routes apart from Heimdal routes, which
 	// apply to this session only.
-	localPrivateHosts := c.PrivateHosts
+	// Never nil, so the status distinguishes no local routes from an older session.
+	localPrivateHosts := append([]string{}, c.PrivateHosts...)
 	if c.Heimdal != nil {
 		if services.fetchHeimdal == nil {
 			return errors.New("Heimdal reader is unavailable")

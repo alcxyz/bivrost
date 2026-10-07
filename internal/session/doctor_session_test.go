@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -399,6 +400,29 @@ func TestDoctorExplicitTargetMatchesSessionWithAddedRoutes(t *testing.T) {
 			_ = runDoctor(context.Background(), cli.Command{Kind: cli.Doctor, ConfigPath: path}, &out)
 			if matched := strings.Contains(out.String(), "[NOT VERIFIED] ACR activation:"); matched != test.match {
 				t.Fatalf("session matched=%v, want %v: %s", matched, test.match, out.String())
+			}
+		})
+	}
+}
+
+func TestSessionLocalRoutesFallBackOnlyForOlderSessions(t *testing.T) {
+	all := []string{"profile.example", "downloaded.example"}
+	for _, test := range []struct {
+		name   string
+		status string
+		want   []string
+	}{
+		{name: "older session", status: `{"Config":{"private_hosts":["profile.example","downloaded.example"]}}`, want: all},
+		{name: "no local routes", status: `{"Config":{"private_hosts":["profile.example","downloaded.example"]},"LocalPrivateHosts":[]}`, want: []string{}},
+		{name: "local routes", status: `{"Config":{"private_hosts":["profile.example","downloaded.example"]},"LocalPrivateHosts":["profile.example"]}`, want: []string{"profile.example"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var status doctorSessionStatus
+			if err := json.Unmarshal([]byte(test.status), &status); err != nil {
+				t.Fatal(err)
+			}
+			if got := status.localRoutes(); !slices.Equal(got, test.want) {
+				t.Fatalf("local routes = %v, want %v", got, test.want)
 			}
 		})
 	}

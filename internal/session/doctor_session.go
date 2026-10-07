@@ -33,6 +33,19 @@ type doctorSessionStatus struct {
 	Environment        map[string]string
 }
 
+// The status repeats the local routes beside the full configuration, so allow
+// for both route lists at their validated maximum.
+const maxSessionStatusSize = 1 << 20
+
+// localRoutes falls back to all routes for a session started by an older
+// Bivrost, which did not report its local routes separately.
+func (s *doctorSessionStatus) localRoutes() []string {
+	if s.LocalPrivateHosts == nil {
+		return s.Config.PrivateHosts
+	}
+	return s.LocalPrivateHosts
+}
+
 func currentDoctorSession(ctx context.Context) (*doctorSessionStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -45,7 +58,7 @@ func currentDoctorSession(ctx context.Context) (*doctorSessionStatus, error) {
 		return nil, errors.New("active session status is unavailable; reconnect or supply --env or --config")
 	}
 	var status doctorSessionStatus
-	if err = json.NewDecoder(io.LimitReader(response.Body, 65536)).Decode(&status); err != nil {
+	if err = json.NewDecoder(io.LimitReader(response.Body, maxSessionStatusSize)).Decode(&status); err != nil {
 		return nil, errors.New("invalid session status; reconnect")
 	}
 	if err = status.Config.ValidatePlatform(); err != nil {
@@ -91,7 +104,7 @@ func runDoctor(ctx context.Context, command cli.Command, out io.Writer) error {
 // routes, so compare routes only with the session's local ones.
 func sessionUsesProfile(status *doctorSessionStatus, c profile.Profile) bool {
 	for _, host := range c.PrivateHosts {
-		if !containsExactHost(status.LocalPrivateHosts, host) {
+		if !containsExactHost(status.localRoutes(), host) {
 			return false
 		}
 	}

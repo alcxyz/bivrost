@@ -93,10 +93,10 @@ func writeTerraformRouteHint(out io.Writer, host string, session *doctorSessionS
 	if session != nil && switchAllowed && profile.ValidEnvironmentName(session.ProfileEnvironment) &&
 		session.ProfileEnvironment != "custom-profile" && !(session.Enabled && !session.LoginRefreshed) {
 		args := []string{"bivrost", "switch", "-e", session.ProfileEnvironment}
-		for _, existing := range session.LocalPrivateHosts {
+		for _, existing := range session.localRoutes() {
 			args = append(args, "--private-host", existing)
 		}
-		if !containsExactHost(session.LocalPrivateHosts, host) {
+		if !containsExactHost(session.localRoutes(), host) {
 			args = append(args, "--private-host", host)
 		}
 		if session.Enabled {
