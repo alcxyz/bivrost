@@ -308,7 +308,10 @@ After a crash, a stale publication file may remain. Its capability cannot
 authenticate to a replacement session's gateway. `bivrost session clean` removes
 recognised stale publications; publish also performs this cleanup. The files
 are private local capabilities: do not share them, commit them, or include
-their contents in logs.
+their contents in logs. The gateway token is part of the cluster's `proxy-url`,
+which `kubectl config view` prints unredacted, as may other tools that display
+kubeconfig settings; treat that output like the file. The token stops working
+when the publication is withdrawn or the session ends.
 
 Linux and macOS desktop discovery is configured separately from Bivrost. Native
 Windows and real GUI-client behavior require live QA.
