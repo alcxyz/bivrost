@@ -535,6 +535,42 @@ func TestPublishProbesStalePublicationsWithoutSessionLock(t *testing.T) {
 	}
 }
 
+func TestUnpublishDuringCleanupPreventsLaterPublication(t *testing.T) {
+	a, _ := publicationFixture(t)
+	root, err := publicationRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	address, accepted := silentGateway(t)
+	writePublicationDescriptor(t, root, "bivrost-unclear.json", address)
+
+	published := make(chan error, 1)
+	go func() {
+		_, err := a.publish()
+		published <- err
+	}()
+	var probe net.Conn
+	select {
+	case probe = <-accepted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("publish did not probe the existing descriptor")
+	}
+	w := httptest.NewRecorder()
+	a.handlePublication(w, httptest.NewRequest("POST", "/unpublish", nil))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("unpublish status = %d", w.Code)
+	}
+	probe.Close()
+	if err := <-published; err == nil {
+		t.Fatal("publish succeeded after sharing was withdrawn")
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.publication != nil || a.publicationRequested {
+		t.Fatal("withdrawn sharing was reinstated")
+	}
+}
+
 func TestCleanPublicationProbesConcurrently(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 	root, err := publicationRoot()

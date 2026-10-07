@@ -15,7 +15,8 @@ import (
 )
 
 func TestPrivateHostsValidationExcludesPublicControlPlane(t *testing.T) {
-	c := profile.Profile{PrivateHosts: []string{"team-vault.vault.azure.net"}}
+	// Only hosts at or below a blocked name are rejected, not lookalikes.
+	c := profile.Profile{PrivateHosts: []string{"team-vault.vault.azure.net", "management.azure.com.example", "notgraph.microsoft.com"}}
 	if err := c.ValidatePrivateHosts(); err != nil {
 		t.Fatal(err)
 	}
@@ -31,6 +32,7 @@ func TestPrivateHostsValidationExcludesPublicControlPlane(t *testing.T) {
 		"management.core.windows.net", "management.usgovcloudapi.net", "management.chinacloudapi.cn",
 		"graph.microsoft.com", "graph.microsoft.us", "dod-graph.microsoft.us",
 		"microsoftgraph.chinacloudapi.cn", "graph.windows.net",
+		"westus.management.azure.com", "canary.graph.microsoft.com", "a.b.login.microsoftonline.com",
 	} {
 		c.PrivateHosts = []string{host}
 		if c.ValidatePrivateHosts() == nil {

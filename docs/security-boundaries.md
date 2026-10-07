@@ -63,7 +63,8 @@ or token audience. Clients must preserve TLS verification. Opt-in startup
 retrieval validates source, schema, digest and expiry before installing routes;
 it does not refresh an active shell. An authorized publisher can otherwise
 route any public HTTPS host on port 443 through the session tunnel, except
-Microsoft sign-in, management and Graph endpoints, which no route may name.
+Microsoft sign-in, management and Graph endpoints and hosts below them, which
+no route may name.
 Set `allowed_route_suffixes` in the local Heimdal bootstrap to limit downloaded
 routes to the adopter's own domains. Metadata must never become executable hooks
 or grant provider permissions. See the [adoption example](heimdal-adoption.md)

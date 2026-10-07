@@ -44,6 +44,9 @@ type acrActivation struct {
 	pending                  *profile.Profile
 	publication              *sessionPublication
 	publicationRequested     bool
+	// withdrawals counts unpublish requests, so a publish that waited on
+	// cleanup does not undo a withdrawal made in the meantime.
+	withdrawals uint64
 }
 
 func activationShell(shell string) bool {

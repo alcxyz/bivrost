@@ -69,6 +69,7 @@ func (a *acrActivation) publish() (string, error) {
 	// state is checked again once the lock is held.
 	a.mu.Lock()
 	path, err := a.publicationStateLocked()
+	withdrawals := a.withdrawals
 	a.mu.Unlock()
 	if path != "" || err != nil {
 		return path, err
@@ -84,6 +85,9 @@ func (a *acrActivation) publish() (string, error) {
 	defer a.mu.Unlock()
 	if path, err = a.publicationStateLocked(); path != "" || err != nil {
 		return path, err
+	}
+	if a.withdrawals != withdrawals {
+		return "", errors.New("session sharing was withdrawn while the publication was prepared")
 	}
 	input, err := os.ReadFile(a.kubeconfig)
 	if err != nil || len(input) > maxKubeconfigJSONSize {
@@ -352,6 +356,7 @@ func (a *acrActivation) handlePublication(w http.ResponseWriter, r *http.Request
 	}
 	if r.URL.Path == "/unpublish" {
 		a.publicationRequested = false
+		a.withdrawals++
 		if a.publication != nil {
 			a.publication.close()
 			a.publication = nil

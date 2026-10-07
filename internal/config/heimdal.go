@@ -58,7 +58,8 @@ func (s HeimdalSource) Validate() error {
 			return errors.New("invalid Heimdal prefix")
 		}
 	}
-	// An empty list is rejected rather than read as "no restriction".
+	// An explicit empty list is rejected rather than read as "no restriction";
+	// JSON null decodes like an absent field and leaves routes unrestricted.
 	if s.AllowedRouteSuffixes != nil && (len(s.AllowedRouteSuffixes) == 0 || len(s.AllowedRouteSuffixes) > maxAllowedRouteSuffixes) {
 		return errors.New("Heimdal allowed_route_suffixes must list between 1 and 64 domain suffixes when set")
 	}
