@@ -16,6 +16,11 @@ import (
 )
 
 func Run(args []string, version string) (resultErr error) {
+	if len(args) > 0 && args[0] == "run" {
+		// Every Bivrost-side failure, including usage errors, must be
+		// distinguishable from the command's own status.
+		defer func() { resultErr = runFailure(resultErr) }()
+	}
 	command, err := cli.Parse(args)
 	if err != nil {
 		return err
@@ -43,7 +48,7 @@ func Run(args []string, version string) (resultErr error) {
 	ctx := context.Background()
 	stop := func() {}
 	signals := terminationSignals(true)
-	if command.Kind == cli.Connect || command.Kind == cli.ACRConnect {
+	if command.Kind == cli.Connect || command.Kind == cli.ACRConnect || command.Kind == cli.Run {
 		// Platform sessions manage Ctrl+C themselves: cancel setup, but let the
 		// foreground local shell handle interrupts once it is running.
 		signals = terminationSignals(false)
@@ -128,8 +133,8 @@ func Run(args []string, version string) (resultErr error) {
 			return err
 		}
 	}
-	if c.RequiresPIM && (command.Kind == cli.Connect || command.Kind == cli.SSH || command.Kind == cli.ACRConnect) {
-		fmt.Println("This environment requires PIM activation. Activate your eligible access before connecting; this tool does not grant or activate permissions.")
+	if c.RequiresPIM && (command.Kind == cli.Connect || command.Kind == cli.SSH || command.Kind == cli.ACRConnect || command.Kind == cli.Run) {
+		fmt.Fprintln(os.Stderr, "This environment requires PIM activation. Activate your eligible access before connecting; this tool does not grant or activate permissions.")
 	}
 
 	switch command.Kind {
@@ -145,6 +150,20 @@ func Run(args []string, version string) (resultErr error) {
 			return connect(ctx, c, command.NoLogin)
 		}
 		return platformConnect(ctx, c)
+	case cli.Run:
+		c.Environment = command.Environment
+		if c.Environment == "" {
+			c.Environment = "custom-profile"
+		}
+		if err := c.ValidatePlatform(); err != nil {
+			return err
+		}
+		if command.ACR {
+			if err := prepareACRSession(ctx, &c, command.NoLogin); err != nil {
+				return err
+			}
+		}
+		return runPlatformCommand(ctx, c, command.Argv)
 	case cli.SSH:
 		if err := c.ValidateConnection(); err != nil {
 			return err
