@@ -59,7 +59,7 @@ func TestRunLaunchSelectsBrowserForSignInTenant(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(rules, "work.json"), []byte(`{"tenants":["6ee535f2-3064-4ac9-81d8-4ceb2ff790c6"],"executable":"`+filepath.Join(root, "work")+`"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(rules, "work.json"), []byte(`{"tenants":["cccccccc-cccc-4ccc-8ccc-cccccccccccc"],"executable":"`+filepath.Join(root, "work")+`"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(rules, "partner.json"), []byte(`{"account_domains":["partner.example"],"executable":"`+filepath.Join(root, "partner")+`"}`), 0o600); err != nil {
@@ -67,7 +67,7 @@ func TestRunLaunchSelectsBrowserForSignInTenant(t *testing.T) {
 	}
 	var out bytes.Buffer
 	for _, address := range []string{
-		"https://login.microsoftonline.com/6ee535f2-3064-4ac9-81d8-4ceb2ff790c6/oauth2/v2.0/authorize?client_id=x",
+		"https://login.microsoftonline.com/cccccccc-cccc-4ccc-8ccc-cccccccccccc/oauth2/v2.0/authorize?client_id=x",
 		"https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/oauth2/v2.0/authorize?login_hint=a%40partner.example",
 	} {
 		if status := Run([]string{address}, &out); status != 0 {

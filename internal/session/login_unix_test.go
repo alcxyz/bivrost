@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const loginRuleTenant = "6ee535f2-3064-4ac9-81d8-4ceb2ff790c6"
+const loginRuleTenant = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 
 // fakeLoginAzureCLI records the arguments bivrost login passes to az.
 func fakeLoginAzureCLI(t *testing.T) (arguments string) {

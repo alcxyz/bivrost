@@ -18,7 +18,7 @@ func writeBrowserRule(t *testing.T, root, name, content string) {
 	}
 }
 
-const ruleTenant = "6ee535f2-3064-4ac9-81d8-4ceb2ff790c6"
+const ruleTenant = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 
 func TestSelectAuthenticationBrowserMatchesTenantThenDomainThenDefault(t *testing.T) {
 	root := isolateSettings(t)
