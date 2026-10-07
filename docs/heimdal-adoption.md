@@ -8,17 +8,18 @@ Use a trusted workstation or isolated CI execution environment. Ordinary
 loopback tunnels do not isolate other local users or workloads; see
 [security boundaries](security-boundaries.md).
 
-**Implementation status:** the development branch supports `heimdal init` for
-first-time publication and opt-in retrieval during connect/reconnect. Ongoing
-publication and rollback, and Bivrost-managed PIM activation are planned features. Activate
-PIM through the provider's own interface today; Bivrost has no `pim` command.
+**Implementation status:** Bivrost supports `heimdal init` for first-time
+publication and opt-in retrieval during connect/reconnect as experimental
+features. Ongoing publication and rollback, and Bivrost-managed PIM activation
+are planned features. Activate PIM through the provider's own interface today;
+Bivrost has no `pim` command.
 
 For a visual walkthrough, see [architecture and reference diagrams](architecture.md),
 especially the storage layout, permission grants and connection lifecycle.
 
 For the accepted **future lifecycle**, see [ADR 0013](adr/0013-heimdal-adopter-lifecycle.md):
 IaC bootstrap, administrative `heimdal publish`, and consumer `heimdal init`.
-The examples below show current development behavior; the command migration and
+The examples below show current behavior; the command migration and
 environment catalogue onboarding have not shipped. Retirement is deferred.
 
 ## Storage and ownership
@@ -118,10 +119,10 @@ planned bootstrap command or replace the current publication interface.
    requires production PIM, users must be able to discover and activate that
    eligibility before fetching it; do not hide the activation prerequisites
    exclusively inside the gated document.
-3. **Initialize the source.** The `heimdal init` command, still under
-   development, uses the signed-in Azure CLI identity, which can be a human or
-   a CI workload identity. The container must already exist, and the identity
-   must already hold write permission on it.
+3. **Initialize the source.** The experimental `heimdal init` command uses
+   the signed-in Azure CLI identity, which can be a human or a CI workload
+   identity. The container must already exist, and the identity must already
+   hold write permission on it.
    Authenticate CI through the organization's federated workload identity flow;
    never store publishing credentials in metadata.
    Bind federation to the intended issuer, audience and protected publishing
@@ -129,14 +130,14 @@ planned bootstrap command or replace the current publication interface.
    publishing credentials. Anyone who can change or execute the privileged
    publishing workflow is effectively a publisher; protect that workflow and
    its dependencies accordingly.
-4. **Consume metadata per session (development).** Connect using bootstrap settings,
+4. **Consume metadata per session (experimental).** Connect using bootstrap settings,
    retrieve and validate the metadata, and keep it only for the session.
    Reading metadata does not grant access to the resources it describes.
    Explicit local fallback remains subject to those resources' authorization.
    A configured source failure stops setup unless `allow_local_fallback` is
    explicitly enabled. Even then, permission and validation failures remain
    visible, and only existing local routes are used. See the
-   [connection profile example](../README.md#fetch-metadata-when-connecting-development).
+   [connection profile example](../README.md#fetch-metadata-when-connecting-experimental).
 5. **Maintain through reviewed CI (planned publication lifecycle).** Keep the
    authoritative deployment metadata in the adopter's own repository. Validate
    changes before publishing an immutable revision and updating its pointer.
@@ -152,7 +153,7 @@ planned bootstrap command or replace the current publication interface.
    reason, reconcile the change back into the source repository before the next
    CI publication, then deactivate. State maintenance uses its separate group.
 
-For example, the initialization interface under development is:
+For example, the current experimental initialization command is:
 
 ```sh
 bivrost heimdal init -e development \

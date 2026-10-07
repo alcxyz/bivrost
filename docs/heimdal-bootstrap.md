@@ -126,7 +126,7 @@ and runner access; do not expose either identity to untrusted pull requests.
 4. Deploy only after review. Re-run the plan to check convergence and inspect
    effective permissions and private connectivity. Static validation cannot
    establish either.
-5. Publish the initial metadata separately. Today the development command is
+5. Publish the initial metadata separately. Today the experimental command is
    `bivrost heimdal init`; the planned administrator command is `heimdal publish`.
    See the [current adoption sequence](heimdal-adoption.md#adoption-sequence).
 6. Add a renewal workflow once conditional publication is implemented. The current
@@ -151,7 +151,7 @@ must combine these explicit inputs and validate the reference before claiming
 it is ready for `bivrost heimdal init --source ...`.
 
 Until then, use the existing profile's `heimdal` locator and local private-source
-route as documented in [the current profile example](../README.md#fetch-metadata-when-connecting-development).
+route as documented in [the current profile example](../README.md#fetch-metadata-when-connecting-experimental).
 The storage account may be in a different subscription from the connection target.
 Keep both choices explicit. No downloaded metadata may be needed to reach its
 own source.

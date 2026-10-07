@@ -120,7 +120,7 @@ or operate on Terraform state. Terraform retains the project's configuration
 and authentication selection; backends and providers configured for Azure CLI
 authentication can use the user's existing local Azure CLI login.
 
-### Terraform baseline (development branch)
+### Terraform baseline
 
 Inspect the subscriptions visible through your existing local Azure login:
 
@@ -157,7 +157,7 @@ or local file protection still stop connection setup.
 
 `bivrost doctor terraform` checks an explicitly selected backend container's
 properties; it does not establish state read/write or lease permissions. The
-remaining Terraform workflow and generic command execution are tracked in
+remaining Terraform workflow is tracked in
 [issue #5](https://github.com/alcxyz/bivrost/issues/5). Bivrost does not run
 `terraform init`, read state, or acquire a backend lock during connection or
 subscription discovery. Terraform commands you run yourself retain their normal
@@ -313,7 +313,7 @@ their contents in logs.
 Linux and macOS desktop discovery is configured separately from Bivrost. Native
 Windows and real GUI-client behavior require live QA.
 
-## Initialise a Heimdal metadata source (development)
+## Initialise a Heimdal metadata source (experimental)
 
 Heimdal uses one existing Azure container by default, named `heimdal`. Each
 connection environment has its own blob prefix inside that shared container.
@@ -351,11 +351,12 @@ should not need publishing rights. A content digest verifies the referenced
 bytes, not publisher identity; trust also depends on the configured source and
 its access controls.
 
-Initial publication and opt-in retrieval are available on `dev`. Updating the
-current pointer and rollback commands remain subsequent work. Terraform-state
-PIM access is not a prerequisite.
+Heimdal is opt-in and experimental: initial publication and retrieval are
+available, while live Azure QA, updating the current pointer and rollback
+commands remain subsequent work. Terraform-state PIM access is not a
+prerequisite.
 
-### Fetch metadata when connecting (development)
+### Fetch metadata when connecting (experimental)
 
 Add a `heimdal` object to your existing connection profile or downstream
 catalogue entry. For example:
@@ -387,10 +388,10 @@ discovery or privilege activation is performed.
 
 `connect`, `connect --acr` and managed `switch` fetch a fresh pointer and revision
 after the bootstrap tunnel is ready. Bivrost validates them before adding the
-routes and opening the shell. Use `bivrost doctor` inside the supported session
-to inspect its effective configuration, including acquired routes. No response
-is cached on disk. Expiry is checked when metadata is acquired; there is no
-background refresh or automatic shutdown when metadata later expires.
+routes and opening the shell, and reports whether the metadata was validated or
+local fallback was used. No response is cached on disk. Expiry is checked when
+metadata is acquired; there is no background refresh or automatic shutdown when
+metadata later expires.
 
 A failed fetch or invalid document stops connection setup by default. Set
 `allow_local_fallback` to `true` only when your local profile is sufficient:

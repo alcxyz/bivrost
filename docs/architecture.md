@@ -1,13 +1,13 @@
 # Bivrost architecture, illustrated
 
-These diagrams describe the development branch. They use fictional teams and
+These diagrams describe current Bivrost behavior. They use fictional teams and
 resources; they do not configure a deployment. Heimdal initial publication and
-startup retrieval are implemented on `dev`. Ongoing publication/rollback and
-Bivrost-managed PIM activation remain planned.
+startup retrieval are available as opt-in, experimental features. Ongoing
+publication/rollback and Bivrost-managed PIM activation remain planned.
 
 For the accepted **future lifecycle**, see [ADR 0013](adr/0013-heimdal-adopter-lifecycle.md):
 IaC bootstrap, administrative `heimdal publish`, and consumer `heimdal init`.
-The examples below show current development behavior; the command migration and
+The examples below show current behavior; the command migration and
 environment catalogue onboarding have not shipped. Retirement is deferred.
 
 ## 1. Where commands run
