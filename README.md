@@ -101,8 +101,10 @@ bivrost run -e <environment> -- sh -c 'terraform init && terraform plan'
 through a shell) and disconnects when it ends. Setup progress goes to stderr,
 so stdout holds only the command's output. The command's exit status is
 returned; Bivrost's own failures use 125, and 126 or 127 mean the command
-could not be executed or found. See `bivrost run --help` and
-[ADR 0016](docs/adr/0016-single-command-execution.md).
+could not be executed or found. The command has no session controller, so
+`switch`, `session publish`, `acr enable`, `doctor terraform` and
+`heimdal init` are unavailable inside it; use `--acr` for registry access. See
+`bivrost run --help` and [ADR 0016](docs/adr/0016-single-command-execution.md).
 
 Repeat `--private-host HOST` on `connect`, `run`, `acr connect`, or `switch` when the
 selected target needs additional exact private DNS hosts. These additions apply
@@ -341,7 +343,8 @@ cancellation; an abrupt crash may leave them in the OS temporary directory.
 For private storage, run inside a session whose bootstrap already routes the
 metadata hostname. Inside a session, the command verifies the active session
 through its controller, so it needs a Bash, Zsh, or PowerShell session; in
-other shells it refuses to run because the session controller is unavailable.
+other shells and inside `bivrost run` it refuses to run because the session
+controller is unavailable.
 The command prints the source locator for the downstream bootstrap
 configuration. Separate read and publish permissions; an ordinary consumer
 should not need publishing rights. A content digest verifies the referenced

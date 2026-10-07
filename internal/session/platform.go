@@ -458,7 +458,7 @@ func platformEnvironment(env []string, proxy, kubeconfigPath string) []string {
 	for _, entry := range env {
 		key, _, _ := strings.Cut(entry, "=")
 		switch strings.ToUpper(key) {
-		case "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "BIVROST_SESSION", "KUBECONFIG":
+		case "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "BIVROST_SESSION", runMarker, "KUBECONFIG":
 			continue
 		}
 		result = append(result, entry)

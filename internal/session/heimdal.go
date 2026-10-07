@@ -25,6 +25,9 @@ func runHeimdalInit(ctx context.Context, command cli.Command, out io.Writer) err
 	}
 	environment := os.Environ()
 	if os.Getenv("BIVROST_SESSION") != "" || os.Getenv("BIVROST_CONTROL_FILE") != "" {
+		if insideRun() {
+			return errors.New("bivrost heimdal init is not available inside bivrost run; use a bivrost connect shell")
+		}
 		if os.Getenv("BIVROST_SESSION") == "" || os.Getenv("BIVROST_CONTROL_FILE") == "" {
 			return errors.New("incomplete active session; reconnect before publishing metadata")
 		}

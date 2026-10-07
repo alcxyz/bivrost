@@ -61,6 +61,7 @@ func TestPlatformEnvironmentIsIsolatedWithoutMutatingParent(t *testing.T) {
 		"KUBECONFIG=/clusters/production",
 		"kubeconfig=/clusters/duplicate",
 		"BIVROST_SESSION=old",
+		"BIVROST_RUN=1",
 		"AZURE_CONFIG_DIR=/users/me/.azure",
 		"DOCKER_CONTEXT=desktop-linux",
 	}
@@ -85,7 +86,7 @@ func TestPlatformEnvironmentIsIsolatedWithoutMutatingParent(t *testing.T) {
 			continue
 		}
 		upper := strings.ToUpper(key)
-		if upper == "ALL_PROXY" {
+		if upper == "ALL_PROXY" || upper == "BIVROST_RUN" {
 			t.Errorf("session environment retained %q", entry)
 		}
 		if want, ok := wantValues[upper]; ok {

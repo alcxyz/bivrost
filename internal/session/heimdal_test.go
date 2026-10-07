@@ -52,8 +52,9 @@ func TestRunHeimdalInitRejectsInvalidDataBeforeAzure(t *testing.T) {
 
 func TestRunHeimdalInitRejectsIncompleteAndStaleSessionsBeforeAzure(t *testing.T) {
 	for _, test := range []struct {
-		name, session, control, want string
+		name, session, control, run, want string
 	}{
+		{name: "run session", session: "1", run: "1", want: "not available inside bivrost run"},
 		{name: "session marker only", session: "1", want: "incomplete active session"},
 		{name: "control marker only", control: "/missing/control.json", want: "incomplete active session"},
 		{name: "stale control", session: "1", control: "/missing/control.json", want: "active session unavailable"},
@@ -62,6 +63,7 @@ func TestRunHeimdalInitRejectsIncompleteAndStaleSessionsBeforeAzure(t *testing.T
 			fixture := installSessionHeimdalAzure(t, "success")
 			t.Setenv("BIVROST_SESSION", test.session)
 			t.Setenv("BIVROST_CONTROL_FILE", test.control)
+			t.Setenv("BIVROST_RUN", test.run)
 			var out bytes.Buffer
 			err := runHeimdalInit(context.Background(), sessionHeimdalCommand(), &out)
 			if err == nil || !strings.Contains(err.Error(), test.want) {

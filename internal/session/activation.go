@@ -292,6 +292,9 @@ func sessionRequest(ctx context.Context, endpoint string) (*http.Response, error
 }
 
 func sessionRequestBody(ctx context.Context, endpoint string, body io.Reader) (*http.Response, error) {
+	if insideRun() {
+		return nil, errors.New("this command is not available inside bivrost run; use a bivrost connect shell")
+	}
 	path := os.Getenv("BIVROST_CONTROL_FILE")
 	if os.Getenv("BIVROST_SESSION") == "" || path == "" {
 		return nil, errors.New("this command requires an active Bivrost Bash, Zsh, or PowerShell session")

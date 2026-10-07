@@ -31,6 +31,9 @@ func runTerraformDoctor(ctx context.Context, command cli.Command, out io.Writer)
 	environment := os.Environ()
 	var session *doctorSessionStatus
 	if os.Getenv("BIVROST_SESSION") != "" || os.Getenv("BIVROST_CONTROL_FILE") != "" {
+		if insideRun() {
+			return errors.New("bivrost doctor terraform is not available inside bivrost run; use a bivrost connect shell")
+		}
 		if os.Getenv("BIVROST_SESSION") == "" || os.Getenv("BIVROST_CONTROL_FILE") == "" {
 			return errors.New("active Bivrost session markers are incomplete; reconnect before probing a private Terraform backend")
 		}

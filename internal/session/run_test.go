@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/alcxyz/bivrost/internal/cli"
 	profile "github.com/alcxyz/bivrost/internal/config"
 	shellinit "github.com/alcxyz/bivrost/internal/shell"
 )
@@ -126,10 +128,35 @@ func TestRunCommandUsesIsolatedSessionWithoutShellOrController(t *testing.T) {
 	if got := shellinit.EnvironmentValue(s.env, "BIVROST_CONTROL_FILE"); got != "" {
 		t.Errorf("command received a session controller %q", got)
 	}
+	if got := shellinit.EnvironmentValue(s.env, "BIVROST_RUN"); got != "1" {
+		t.Errorf("command BIVROST_RUN = %q, want 1", got)
+	}
 	if running.Load() {
 		t.Error("command remains marked running")
 	}
 	s.assertCleanedUp(t)
+}
+
+func TestSessionCommandsExplainTheyAreUnavailableInsideRun(t *testing.T) {
+	t.Setenv("BIVROST_SESSION", "1")
+	t.Setenv("BIVROST_CONTROL_FILE", "")
+	t.Setenv("BIVROST_RUN", "1")
+	// An empty PATH keeps Azure CLI out of reach if a check were skipped.
+	t.Setenv("PATH", t.TempDir())
+	for name, run := range map[string]func() error{
+		"doctor terraform": func() error {
+			command := cli.Command{Kind: cli.TerraformDoctor, Subscription: "sub", Account: "examplestate", Container: "tfstate"}
+			return runTerraformDoctor(context.Background(), command, io.Discard)
+		},
+		"session publish": func() error { return runSessionPublication(context.Background(), "publish") },
+		"acr enable":      func() error { return enableSessionACR(context.Background()) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := run(); err == nil || !strings.Contains(err.Error(), "not available inside bivrost run") {
+				t.Fatalf("error = %v, want an explanation that run has no session controller", err)
+			}
+		})
+	}
 }
 
 func TestRunCommandReportsCommandFailureAsItsOwnStatus(t *testing.T) {
