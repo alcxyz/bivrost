@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	profile "github.com/alcxyz/bivrost/internal/config"
+	shellinit "github.com/alcxyz/bivrost/internal/shell"
 )
 
 type heimdalConnectState struct {
@@ -206,6 +207,33 @@ func TestPlatformConnectFetchesFreshHeimdalRoutesForEveryConnection(t *testing.T
 		t.Fatalf("shell starts = %d, want one per connection", state.shellStarts)
 	}
 	assertHeimdalTransportCleanup(t, state)
+}
+
+func TestPlatformConnectReportsLocalRoutesApartFromHeimdalRoutes(t *testing.T) {
+	c := heimdalPlatformConfig(t)
+	state := &heimdalConnectState{fetch: func(context.Context, profile.Profile) ([]string, error) {
+		return []string{"remote.private.example"}, nil
+	}}
+	services := heimdalConnectServices(t, state)
+	services.selectShell = func() (string, []string, error) { return "/bin/bash", []string{"-i"}, nil }
+	var status doctorSessionStatus
+	services.startShell = func(_ context.Context, _ string, _ []string, env []string) (*platformProcess, error) {
+		status = doctorTestStatus(t, readActivationControl(t, shellinit.EnvironmentValue(env, "BIVROST_CONTROL_FILE")))
+		done := make(chan struct{})
+		close(done)
+		return &platformProcess{done: done, err: func() error { return nil }, stop: func() {}}, nil
+	}
+
+	var shellRunning atomic.Bool
+	if err := platformConnectWith(context.Background(), c, &shellRunning, services); err != nil {
+		t.Fatalf("platformConnectWith() error = %v", err)
+	}
+	if got, want := status.Config.PrivateHosts, []string{"local.private.example", "remote.private.example"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("effective session routes = %q, want %q", got, want)
+	}
+	if got, want := status.LocalPrivateHosts, []string{"local.private.example"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("local session routes = %q, want %q", got, want)
+	}
 }
 
 func TestPlatformConnectWithoutHeimdalDoesNotFetchOrReplaceProxy(t *testing.T) {

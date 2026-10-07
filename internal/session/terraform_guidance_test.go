@@ -33,7 +33,9 @@ func TestTerraformRouteHintPreservesOriginalConnectionChoice(t *testing.T) {
 }
 
 func TestTerraformRouteHintSwitchPreservesRoutesAndACR(t *testing.T) {
-	session := &doctorSessionStatus{ProfileEnvironment: "example", Config: profile.Profile{PrivateHosts: []string{"existing.example"}}, Enabled: true, LoginRefreshed: true}
+	// Heimdal routes are fetched again by the switch; pinning them as local
+	// routes would keep them after the metadata changes or fails.
+	session := &doctorSessionStatus{ProfileEnvironment: "example", Config: profile.Profile{PrivateHosts: []string{"existing.example", "downloaded.example"}}, LocalPrivateHosts: []string{"existing.example"}, Enabled: true, LoginRefreshed: true}
 	var out bytes.Buffer
 	writeTerraformRouteHint(&out, "state.example", session, true)
 	var args []string

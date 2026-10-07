@@ -230,6 +230,9 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 
 	finishForward(nil)
 	diagnostics.Event(ctx, diagnostics.EventForwardReady)
+	// Keep the profile and command-line routes apart from Heimdal routes, which
+	// apply to this session only.
+	localPrivateHosts := c.PrivateHosts
 	if c.Heimdal != nil {
 		if services.fetchHeimdal == nil {
 			return errors.New("Heimdal reader is unavailable")
@@ -273,6 +276,7 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 	}
 	shellEnv := platformEnvironment(services.environ(), c.ProxyURL(), kubeconfigPath)
 	activation := newACRActivation(ctx, c, services, bastion.directory, shellName)
+	activation.localPrivateHosts = localPrivateHosts
 	activation.kubeconfig = kubeconfigPath
 	activation.publicationRequested = resumePublication
 	activation.kubernetesUnavailable = kubeUnavailable != nil

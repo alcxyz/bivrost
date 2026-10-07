@@ -85,14 +85,15 @@ func runTerraformDoctor(ctx context.Context, command cli.Command, out io.Writer)
 
 // Custom profile paths and deliberately skipped registry login cannot be
 // reconstructed as a named-environment switch. Keep their original options.
+// Heimdal routes are fetched again on switch, so only local routes are repeated.
 func writeTerraformRouteHint(out io.Writer, host string, session *doctorSessionStatus, switchAllowed bool) {
 	if session != nil && switchAllowed && profile.ValidEnvironmentName(session.ProfileEnvironment) &&
 		session.ProfileEnvironment != "custom-profile" && !(session.Enabled && !session.LoginRefreshed) {
 		args := []string{"bivrost", "switch", "-e", session.ProfileEnvironment}
-		for _, existing := range session.Config.PrivateHosts {
+		for _, existing := range session.LocalPrivateHosts {
 			args = append(args, "--private-host", existing)
 		}
-		if !containsExactHost(session.Config.PrivateHosts, host) {
+		if !containsExactHost(session.LocalPrivateHosts, host) {
 			args = append(args, "--private-host", host)
 		}
 		if session.Enabled {

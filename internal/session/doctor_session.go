@@ -23,11 +23,14 @@ type doctorSessionStatus struct {
 	KubernetesUnavailable bool
 	Kubeconfig            string
 	Config                profile.Profile
-	ProfileEnvironment    string
-	Enabled               bool
-	LoginRefreshed        bool
-	Machine               bool
-	Environment           map[string]string
+	// LocalPrivateHosts are the profile and command-line routes. Config also
+	// contains routes downloaded from Heimdal for this session only.
+	LocalPrivateHosts  []string
+	ProfileEnvironment string
+	Enabled            bool
+	LoginRefreshed     bool
+	Machine            bool
+	Environment        map[string]string
 }
 
 func currentDoctorSession(ctx context.Context) (*doctorSessionStatus, error) {
@@ -76,16 +79,27 @@ func runDoctor(ctx context.Context, command cli.Command, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if status != nil {
-			selected, _ := json.Marshal(c)
-			active, _ := json.Marshal(status.Config)
-			if !bytes.Equal(selected, active) {
-				status = nil
-			}
+		if status != nil && !sessionUsesProfile(status, c) {
+			status = nil
 		}
 	}
 	c.SkipPullProbe = command.NoPull
 	return platformDoctorWithSession(ctx, c, out, status)
+}
+
+// The session's routes extend the profile's with command-line and Heimdal
+// routes, so compare routes only with the session's local ones.
+func sessionUsesProfile(status *doctorSessionStatus, c profile.Profile) bool {
+	for _, host := range c.PrivateHosts {
+		if !containsExactHost(status.LocalPrivateHosts, host) {
+			return false
+		}
+	}
+	active := status.Config
+	active.PrivateHosts, c.PrivateHosts = nil, nil
+	selected, _ := json.Marshal(c)
+	connected, _ := json.Marshal(active)
+	return bytes.Equal(selected, connected)
 }
 
 func doctorSessionEnvironment(c profile.Profile, status *doctorSessionStatus) bool {
