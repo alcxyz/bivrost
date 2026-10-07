@@ -127,7 +127,7 @@ func prepareSSHCertificate(ctx context.Context, c profile.Profile, sshConfig, di
 			}
 			signingIn = true
 			deadline.Reset(sshSignInTimeout)
-			fmt.Printf("Azure needs interactive sign-in for the SSH certificate: %s.\nContinue in the browser window; waiting up to %v...\n", interactionReason(warnings()), sshSignInTimeout)
+			fmt.Fprintf(os.Stderr, "Azure needs interactive sign-in for the SSH certificate: %s.\nContinue in the browser window; waiting up to %v...\n", interactionReason(warnings()), sshSignInTimeout)
 		}
 	}
 }

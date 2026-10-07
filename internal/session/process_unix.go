@@ -33,3 +33,17 @@ func prepareInteractiveShell(cmd *exec.Cmd) {
 	prepareInteractive(cmd)
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGHUP) }
 }
+
+// A run command shares Bivrost's process group, so terminal Ctrl+C reaches it
+// directly. Cancellation asks it to finish before session cleanup proceeds.
+func prepareRunCommand(cmd *exec.Cmd) {
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
+	cmd.WaitDelay = 10 * time.Second
+}
+
+func signalExitCode(err *exec.ExitError) int {
+	if status, ok := err.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+		return runSignalExitOffset + int(status.Signal())
+	}
+	return RunFailureExitCode
+}

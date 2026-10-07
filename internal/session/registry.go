@@ -125,7 +125,7 @@ func loginRegistryWithCommand(childCtx context.Context, c profile.Profile, podma
 	if err := podman.Run(); err != nil {
 		return errors.New("Podman registry login failed; run bivrost doctor for this environment and verify proxy and credential storage settings")
 	}
-	fmt.Println("Local Podman registry login refreshed.")
+	fmt.Fprintln(os.Stderr, "Local Podman registry login refreshed.")
 	return nil
 }
 

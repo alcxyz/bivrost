@@ -352,3 +352,59 @@ func TestParseCommandProfiles(t *testing.T) {
 		})
 	}
 }
+
+func TestParseRunCommandKeepsCommandArgumentsVerbatim(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		args []string
+		want []string
+	}{
+		{[]string{"run", "-e", "staging", "--", "kubectl", "get", "pods", "-n", "app"}, []string{"kubectl", "get", "pods", "-n", "app"}},
+		{[]string{"run", "-e", "staging", "kubectl", "--env", "x"}, []string{"kubectl", "--env", "x"}},
+		{[]string{"run", "-e", "staging", "--", "sh", "-c", "echo $HOME; exit 3"}, []string{"sh", "-c", "echo $HOME; exit 3"}},
+		{[]string{"run", "-e", "staging", "--", "--help"}, []string{"--help"}},
+	} {
+		command, err := Parse(tc.args)
+		if err != nil {
+			t.Errorf("Parse(%q) error = %v", tc.args, err)
+			continue
+		}
+		if command.Kind != Run || command.Environment != "staging" || !reflect.DeepEqual(command.Argv, tc.want) {
+			t.Errorf("Parse(%q) = kind %v env %q argv %q, want run staging %q", tc.args, command.Kind, command.Environment, command.Argv, tc.want)
+		}
+	}
+}
+
+func TestParseRunCommandOptions(t *testing.T) {
+	t.Parallel()
+	command, err := Parse([]string{"run", "-c", "profile.json", "--acr", "-n", "--private-host", "db.private.example", "-d", "--", "terraform", "plan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if command.ConfigPath != "profile.json" || !command.ACR || !command.NoLogin || !command.Debug ||
+		!reflect.DeepEqual(command.PrivateHosts, []string{"db.private.example"}) || !reflect.DeepEqual(command.Argv, []string{"terraform", "plan"}) {
+		t.Fatalf("Parse() = %+v", command)
+	}
+}
+
+func TestParseRunCommandRejectsMissingCommandOrTarget(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{
+		{"run", "-e", "staging"},
+		{"run", "-e", "staging", "--"},
+		{"run", "-e", "staging", "--", ""},
+		{"run", "--", "kubectl"},
+		{"run", "-e", "staging", "-c", "x.json", "--", "kubectl"},
+		{"run", "-e", "staging", "-n", "--", "kubectl"},
+	} {
+		if _, err := Parse(args); err == nil {
+			t.Errorf("Parse(%q) error = nil", args)
+		}
+	}
+	for _, args := range [][]string{{"run", "--help"}, {"help", "run"}, {"run", "-e", "staging", "--help"}} {
+		command, err := Parse(args)
+		if err != nil || command.Kind != Help || command.HelpTopic != "run" {
+			t.Errorf("Parse(%q) = %+v, %v; want run help", args, command, err)
+		}
+	}
+}

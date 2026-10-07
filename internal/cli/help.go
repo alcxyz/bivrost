@@ -24,6 +24,7 @@ Usage: bivrost <command> [options]
 
 Access
   connect       Open a local shell for platform commands
+  run           Run one local command in a temporary session
   switch        Reconnect the active shell to another environment
   session       Share the active Kubernetes session with other local tools
   ssh           Open a shell on the management VM
@@ -46,6 +47,7 @@ Start here
   bivrost doctor -e example
   bivrost connect -e example
   bivrost connect -e example --acr
+  bivrost run -e example -- kubectl get pods
 
 Help: bivrost <command> --help  or  bivrost help <command>
 For image access: bivrost acr --help
@@ -274,6 +276,10 @@ Options
 		description = "Open a local shell with platform connectivity."
 		notes = "Azure sign-in is reused. Proxy variables and kubeconfig apply only\nto this shell; your personal Kubernetes context stays unchanged. Kubernetes\nsetup is automatic; missing client tools or unavailable AKS credentials leave\nother commands usable with an isolated empty kubeconfig.\nRepeat --private-host for exact DNS hosts needed only by this session;\nthese additions are not saved. Exit the shell to disconnect. Add --acr\nfor Podman registry access, or run bivrost acr enable inside a Bash, Zsh,\nor PowerShell session. Podman is required only when ACR is enabled."
 		example = "bivrost connect -e example"
+	case "run":
+		description = "Run one local command in a temporary platform session, then disconnect."
+		notes = "Sets up the same session as connect, runs COMMAND directly (not through a\nshell) with the session's proxy and kubeconfig, then closes the session.\nUse sh -c or pwsh -Command explicitly when shell syntax is needed. Setup\nmessages go to stderr; the command's own stdin, stdout and stderr are passed\nthrough unchanged. Without usable Kubernetes, KUBECONFIG points to an isolated\nempty configuration and the command still runs.\n\nExit status is the command's own. Bivrost exits 125 when the session cannot\nbe set up or is lost, or when it is terminated before the command finishes;\n126 when COMMAND cannot be executed and 127 when it is not found. A command\nended by a signal yields 128 plus the signal number. Ctrl+C reaches the\ncommand normally; SIGTERM or SIGHUP sent to Bivrost is passed to the command,\nwhich then has 10 seconds to exit before the session closes.\n\nThe session's controller is not started, so session publish, switch and\nacr enable are unavailable inside COMMAND; use --acr for registry access."
+		example = "bivrost run -e example -- kubectl get pods -A"
 	case "switch":
 		description = "Close the active session and connect to another environment."
 		notes = "Run inside a Bivrost Bash, Zsh, or PowerShell session. Finish shell jobs\nbefore switching; in PowerShell, remove finished job records with Remove-Job.\nThe target configuration is validated before leaving. A fresh shell opens after\ncleanup; shell-local variables, directory changes, and prior --private-host\nadditions are not carried over. Repeat --private-host for exact DNS hosts needed\nby the new session. Add --acr to enable registry access in the new session.\nIf the new connection fails, you return to your original terminal; the old\nsession is not restored. Provider permissions and PIM still apply."
@@ -309,19 +315,23 @@ Options
 	if topic == "doctor" {
 		b.WriteString(description + "\n\nUsage: bivrost doctor [-e NAME | -c PATH] [options]\n\nTarget (optional inside an active Bivrost session)\n")
 	} else {
-		b.WriteString(description + "\n\nUsage: bivrost " + topic + " (-e NAME | -c PATH) [options]\n\nTarget (choose one)\n")
+		usage := "bivrost " + topic + " (-e NAME | -c PATH) [options]"
+		if topic == "run" {
+			usage += " [--] COMMAND [ARGS...]"
+		}
+		b.WriteString(description + "\n\nUsage: " + usage + "\n\nTarget (choose one)\n")
 	}
 	b.WriteString("  -e, --env NAME     Catalogue environment or local profile\n  -c, --config PATH  Explicit custom profile\n\nOptions\n")
 	if topic == "doctor" {
 		b.WriteString("      --no-pull      Skip the diagnostic image pull\n")
 	}
-	if topic == "connect" || topic == "switch" {
+	if topic == "connect" || topic == "switch" || topic == "run" {
 		b.WriteString("      --acr          Enable Podman registry access at startup\n")
 	}
-	if topic == "connect" || topic == "acr connect" || topic == "switch" {
+	if topic == "connect" || topic == "acr connect" || topic == "switch" || topic == "run" {
 		b.WriteString("      --private-host HOST\n                     Route one exact private DNS host (repeatable)\n")
 	}
-	if topic == "acr connect" || topic == "connect" {
+	if topic == "acr connect" || topic == "connect" || topic == "run" {
 		b.WriteString("  -n, --no-login     Connect without refreshing registry login\n")
 	}
 	b.WriteString("  -d, --debug        Record a bounded local diagnostic log\n  -h, --help         Show this help\n\n")

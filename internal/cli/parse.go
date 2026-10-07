@@ -38,6 +38,7 @@ const (
 	SessionPath
 	SessionClean
 	HeimdalInit
+	Run
 )
 
 type Command struct {
@@ -59,6 +60,8 @@ type Command struct {
 	MetadataPrefix   string
 	MetadataValidity time.Duration
 	HelpTopic        string
+	// Argv is the local command and arguments for Run, executed without a shell.
+	Argv []string
 }
 
 func Parse(args []string) (Command, error) {
@@ -145,6 +148,8 @@ func Parse(args []string) (Command, error) {
 		return parseConnectionCommand(Connect, "connect", args[1:], true)
 	case "ssh":
 		return parseConnectionCommand(SSH, "ssh", args[1:], false)
+	case "run":
+		return parseConnectionCommand(Run, "run", args[1:], true)
 	case "acr":
 		if len(args) == 1 {
 			return Command{}, errors.New("missing ACR command; use bivrost help")
@@ -236,7 +241,7 @@ func parseConnectionCommand(kind Kind, name string, args []string, allowNoLogin 
 	configPath := flags.String("config", "", "path to a connection configuration")
 	flags.StringVar(configPath, "c", "", "path to a connection configuration")
 	var privateHosts []string
-	if kind == Connect || kind == ACRConnect || kind == Switch {
+	if kind == Connect || kind == ACRConnect || kind == Switch || kind == Run {
 		flags.Func("private-host", "exact private DNS host to route through this session (repeatable)", func(host string) error {
 			privateHosts = append(privateHosts, host)
 			return nil
@@ -247,7 +252,7 @@ func parseConnectionCommand(kind Kind, name string, args []string, allowNoLogin 
 		flags.BoolVar(&noPull, "no-pull", false, "skip the diagnostic image pull")
 	}
 	var acr bool
-	if kind == Connect || kind == Switch {
+	if kind == Connect || kind == Switch || kind == Run {
 		flags.BoolVar(&acr, "acr", false, "enable Podman registry access")
 	}
 	var noLogin *bool
@@ -261,7 +266,13 @@ func parseConnectionCommand(kind Kind, name string, args []string, allowNoLogin 
 		}
 		return Command{}, fmt.Errorf("invalid %s options: %w", name, err)
 	}
-	if flags.NArg() != 0 {
+	var argv []string
+	if kind == Run {
+		argv = flags.Args()
+		if len(argv) == 0 || argv[0] == "" {
+			return Command{}, errors.New("run requires a command after its options; use bivrost run -e NAME -- COMMAND [ARGS...]")
+		}
+	} else if flags.NArg() != 0 {
 		return Command{}, fmt.Errorf("%s does not accept positional arguments", name)
 	}
 
@@ -291,11 +302,11 @@ func parseConnectionCommand(kind Kind, name string, args []string, allowNoLogin 
 		return Command{}, fmt.Errorf("invalid --private-host: %w", err)
 	}
 
-	command := Command{NoPull: noPull, ACR: acr, Kind: kind, Environment: *environment, ConfigPath: *configPath, PrivateHosts: privateHosts, Debug: *debug}
+	command := Command{NoPull: noPull, ACR: acr, Kind: kind, Environment: *environment, ConfigPath: *configPath, PrivateHosts: privateHosts, Debug: *debug, Argv: argv}
 	if noLogin != nil {
 		command.NoLogin = *noLogin
 	}
-	if kind == Connect && command.NoLogin && !acr {
+	if (kind == Connect || kind == Run) && command.NoLogin && !acr {
 		return Command{}, errors.New("--no-login requires --acr")
 	}
 	return command, nil

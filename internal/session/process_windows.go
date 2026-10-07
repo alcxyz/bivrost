@@ -30,3 +30,11 @@ func prepareInteractive(cmd *exec.Cmd) {
 }
 
 func prepareInteractiveShell(cmd *exec.Cmd) { prepareInteractive(cmd) }
+
+// Console Ctrl+C reaches a run command directly. Windows has no SIGTERM, so
+// cancellation terminates the command before session cleanup proceeds.
+func prepareRunCommand(cmd *exec.Cmd) {
+	cmd.WaitDelay = 10 * time.Second
+}
+
+func signalExitCode(*exec.ExitError) int { return RunFailureExitCode }

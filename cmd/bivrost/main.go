@@ -26,6 +26,14 @@ func main() {
 		if errors.Is(err, session.ErrSwitchAccepted) {
 			os.Exit(session.SwitchShellExitCode)
 		}
+		var exit *session.ExitError
+		if errors.As(err, &exit) {
+			// A command's own failure was already reported by the command.
+			if exit.Err != nil {
+				log.Print("bivrost: ", exit.Err)
+			}
+			os.Exit(exit.Code)
+		}
 		log.Print("bivrost: ", err)
 		os.Exit(1)
 	}
