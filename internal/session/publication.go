@@ -372,6 +372,10 @@ func runSessionPublication(ctx context.Context, action string) error {
 	return nil
 }
 
+// A crash between creating and renaming a descriptor leaves its temporary
+// file. Publish renames it at once, so an older one has no owner.
+const staleTemporaryPublication = time.Minute
+
 // Only remove recognised descriptors whose local owner is conclusively gone.
 // Timeouts and other ambiguous failures leave files alone.
 func cleanPublications(ctx context.Context) error {
@@ -390,14 +394,25 @@ func cleanPublicationDirectory(ctx context.Context, root string) error {
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirect rejected") }}
 	for _, entry := range entries {
-		if !strings.HasPrefix(entry.Name(), "bivrost-") || !strings.HasSuffix(entry.Name(), ".json") || !entry.Type().IsRegular() {
+		if !strings.HasPrefix(entry.Name(), "bivrost-") || !entry.Type().IsRegular() {
 			continue
 		}
 		info, err := entry.Info()
-		if err != nil || info.Size() > maxKubeconfigJSONSize {
+		if err != nil {
 			continue
 		}
 		path := filepath.Join(root, entry.Name())
+		if strings.HasSuffix(entry.Name(), ".tmp") {
+			if time.Since(info.ModTime()) > staleTemporaryPublication {
+				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+					return errors.New("cannot remove stale publication")
+				}
+			}
+			continue
+		}
+		if !strings.HasSuffix(entry.Name(), ".json") || info.Size() > maxKubeconfigJSONSize {
+			continue
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			continue

@@ -260,6 +260,56 @@ func TestCleanPublicationRetainsLiveAndRemovesCrashedOwner(t *testing.T) {
 		t.Fatal("stale descriptor not removed")
 	}
 }
+func TestCleanPublicationRemovesOnlyAbandonedTemporaryFiles(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	root, err := publicationRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-2 * staleTemporaryPublication)
+	// Each file is old unless noted; the value says whether it must be removed.
+	files := map[string]bool{
+		"bivrost-1.tmp":  true,
+		"bivrost-2.tmp":  false, // recent: a live publish may still rename it
+		"other-3.tmp":    false,
+		"bivrost-4.temp": false,
+	}
+	for name := range files {
+		path := filepath.Join(root, name)
+		if err := os.WriteFile(path, []byte("{"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if name == "bivrost-2.tmp" {
+			continue
+		}
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if runtime.GOOS != "windows" {
+		target := filepath.Join(t.TempDir(), "target")
+		if err := os.WriteFile(target, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(target, old, old); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, filepath.Join(root, "bivrost-5.tmp")); err != nil {
+			t.Fatal(err)
+		}
+		files["bivrost-5.tmp"] = false
+	}
+	if err := cleanPublications(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for name, stale := range files {
+		_, err := os.Lstat(filepath.Join(root, name))
+		if removed := os.IsNotExist(err); removed != stale {
+			t.Errorf("%s removed=%v, want %v", name, removed, stale)
+		}
+	}
+}
+
 func TestPublicationRootFallbackAndSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix symlink permissions")
