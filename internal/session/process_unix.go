@@ -45,7 +45,12 @@ func prepareRunCommand(cmd *exec.Cmd, ownGroup bool) func() {
 		return func() {}
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) }
+	cmd.Cancel = func() error {
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		// A group stopped for terminal input acts on SIGTERM only once continued.
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGCONT)
+		return err
+	}
 	return func() { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 }
 

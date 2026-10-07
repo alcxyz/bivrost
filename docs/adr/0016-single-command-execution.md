@@ -47,7 +47,7 @@ Provide `bivrost run (-e NAME | -c PATH) [--acr [-n]] [--private-host HOST]
   CI and agent runs, the command gets its own process group. SIGTERM or SIGHUP
   sent to Bivrost, or SIGINT outside the foreground, asks the command to stop:
   Unix sends SIGTERM to the command, or to its whole group when it has one,
-  and Windows terminates the command. The session's
+  and Windows terminates the command's process tree. The session's
   tunnels and proxy stay up while the command shuts down, for at most 10
   seconds, so it can save state or release locks. If a tunnel, proxy or
   registry session fails while the command runs, the command is stopped the
@@ -59,7 +59,13 @@ Provide `bivrost run (-e NAME | -c PATH) [--acr [-n]] [--private-host HOST]
 Each `run` pays the full session setup, which suits occasional commands and
 CI. Frequent callers can still keep a `connect` session and use its
 environment. Exit status 125 to 127 are ambiguous only for commands that use
-those values themselves. Progress messages from shared setup steps now go to
+those values themselves. A command sharing a foreground terminal's process group
+is stopped individually: Bivrost cannot signal that group without reaching
+its own pipeline neighbours or a calling script, so background processes the
+command starts there are not tracked, as in an ordinary shell. A run started
+as a background job keeps its own process group if later brought to the
+foreground, so a command that reads the terminal should be started in the
+foreground. Progress messages from shared setup steps now go to
 stderr for every session command.
 
 ## Alternatives considered

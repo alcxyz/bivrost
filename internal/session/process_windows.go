@@ -5,6 +5,7 @@ package session
 import (
 	"os"
 	"os/exec"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -31,10 +32,18 @@ func prepareInteractive(cmd *exec.Cmd) {
 
 func prepareInteractiveShell(cmd *exec.Cmd) { prepareInteractive(cmd) }
 
-// Console Ctrl+C reaches a run command directly. Windows has no SIGTERM, so
-// cancellation terminates the command itself before session cleanup proceeds.
+// Console Ctrl+C reaches a run command directly. Windows has no SIGTERM and
+// does not end children with their parent, so cancellation ends the command's
+// whole process tree, such as the session Podman wrapper and Podman itself.
 func prepareRunCommand(cmd *exec.Cmd, _ bool) func() {
 	cmd.WaitDelay = 10 * time.Second
+	cmd.Cancel = func() error {
+		tree := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid))
+		if tree.Run() != nil {
+			return cmd.Process.Kill()
+		}
+		return nil
+	}
 	return func() {}
 }
 
