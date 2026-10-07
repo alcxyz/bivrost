@@ -17,8 +17,8 @@ its implementation is complete.
 - [#31: conditional Heimdal publication and rollback](https://github.com/alcxyz/bivrost/issues/31)
 
 Completed foundation: [#3, release distribution](https://github.com/alcxyz/bivrost/issues/3).
-Initial Heimdal publication and opt-in startup retrieval are on `dev`;
-live Azure QA and ongoing publication/rollback remain open. Terraform container
+Initial Heimdal publication and opt-in startup retrieval are released as
+experimental features; live Azure QA and ongoing publication/rollback remain open. Terraform container
 metadata diagnostics have live macOS QA; this does not establish state or plan access.
 
 ## Heimdal adoption lifecycle
@@ -43,7 +43,7 @@ this milestone; resource ownership and shared-resource boundaries start at boots
 
 The [Azure adoption example](../heimdal-adoption.md) describes reader/publisher
 separation, independent state-maintenance PIM, and the intended CI workflow.
-It distinguishes development and planned behavior from available features.
+It distinguishes experimental and planned behavior from available features.
 
 1. [Heimdal: session metadata](https://github.com/alcxyz/bivrost/milestone/1) delivers fresh per-connection
    metadata with the existing explicit local configuration fallback.

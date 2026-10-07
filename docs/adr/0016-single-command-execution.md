@@ -29,10 +29,11 @@ Provide `bivrost run (-e NAME | -c PATH) [--acr [-n]] [--private-host HOST]
 - **Inheritance.** The command receives the session environment used by the
   interactive shell (`HTTPS_PROXY`, `NO_PROXY`, `KUBECONFIG`,
   `BIVROST_SESSION` and, with `--acr`, the Podman settings). It does not
-  receive the session controller, so `switch`, `session publish` and
-  `acr enable` are unavailable inside it. Without usable Kubernetes it still
-  runs with an isolated empty kubeconfig; Bivrost never falls back to an
-  ambient context.
+  receive the session controller, so `switch`, `session publish`,
+  `acr enable`, `doctor terraform` and `heimdal init` are unavailable inside
+  it; `BIVROST_RUN=1` lets them report this instead of a broken session.
+  Without usable Kubernetes it still runs with an isolated empty kubeconfig;
+  Bivrost never falls back to an ambient context.
 - **Streams.** Stdin, stdout and stderr are passed through. Bivrost's own
   setup progress goes to stderr so stdout belongs to the command.
 - **Exit status.** The command's status passes through. Following `env` and

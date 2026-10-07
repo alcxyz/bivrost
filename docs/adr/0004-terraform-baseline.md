@@ -1,8 +1,9 @@
 # ADR 0004: Terraform baseline and local Azure discovery
 
-- Status: Accepted; baseline implementation on `dev`
+- Status: Accepted; baseline implemented
 - Date: 2026-09-20
-- Scope: Incremental implementation on `dev`; explicit backend metadata diagnostics implemented.
+- Updated: 2026-10-07
+- Scope: Incremental implementation; explicit backend metadata diagnostics implemented.
 
 ## Context
 
@@ -46,7 +47,7 @@ Terraform-capable session.
 
 ## Implementation progress
 
-The development branch supports exact session-only private host routes and
+Bivrost supports exact session-only private host routes and
 read-only `bivrost list subscriptions [--refresh]` using the local Azure CLI
 identity. Listing does not select a subscription or change project settings.
 Backend and provider subscription selection remains owned by the project;
@@ -92,9 +93,10 @@ in-memory stderr sample is used only for classification, never displayed or
 logged. Unknown or truncated output retains generic guidance. A network error
 does not establish whether the failed request was to storage, identity or a proxy.
 
-Generic command-execution lifecycle remains a future slice. Backend discovery
-beyond the explicit diagnostic is also deferred. Neither requires Heimdal;
-later runtime metadata can supply the same connection profile inputs.
+Single command execution is provided by `bivrost run`
+([ADR 0016](0016-single-command-execution.md)). Backend discovery beyond the
+explicit diagnostic is deferred. Neither requires Heimdal; later runtime
+metadata can supply the same connection profile inputs.
 
 ## Alternatives considered
 

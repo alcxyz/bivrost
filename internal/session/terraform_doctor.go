@@ -31,6 +31,9 @@ func runTerraformDoctor(ctx context.Context, command cli.Command, out io.Writer)
 	environment := os.Environ()
 	var session *doctorSessionStatus
 	if os.Getenv("BIVROST_SESSION") != "" || os.Getenv("BIVROST_CONTROL_FILE") != "" {
+		if insideRun() {
+			return errors.New("bivrost doctor terraform is not available inside bivrost run; use a bivrost connect shell")
+		}
 		if os.Getenv("BIVROST_SESSION") == "" || os.Getenv("BIVROST_CONTROL_FILE") == "" {
 			return errors.New("active Bivrost session markers are incomplete; reconnect before probing a private Terraform backend")
 		}
@@ -85,14 +88,15 @@ func runTerraformDoctor(ctx context.Context, command cli.Command, out io.Writer)
 
 // Custom profile paths and deliberately skipped registry login cannot be
 // reconstructed as a named-environment switch. Keep their original options.
+// Heimdal routes are fetched again on switch, so only local routes are repeated.
 func writeTerraformRouteHint(out io.Writer, host string, session *doctorSessionStatus, switchAllowed bool) {
 	if session != nil && switchAllowed && profile.ValidEnvironmentName(session.ProfileEnvironment) &&
 		session.ProfileEnvironment != "custom-profile" && !(session.Enabled && !session.LoginRefreshed) {
 		args := []string{"bivrost", "switch", "-e", session.ProfileEnvironment}
-		for _, existing := range session.Config.PrivateHosts {
+		for _, existing := range session.localRoutes() {
 			args = append(args, "--private-host", existing)
 		}
-		if !containsExactHost(session.Config.PrivateHosts, host) {
+		if !containsExactHost(session.localRoutes(), host) {
 			args = append(args, "--private-host", host)
 		}
 		if session.Enabled {

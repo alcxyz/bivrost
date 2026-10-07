@@ -21,6 +21,9 @@ const MaxPointerSize = 4 * 1024
 const DefaultValidity = 24 * time.Hour
 const MaxValidity = 7 * 24 * time.Hour
 
+// MaxClockSkew tolerates a reader whose clock is slightly behind the publisher's.
+const MaxClockSkew = 5 * time.Minute
+
 // Document deliberately permits only exact private routes in the first schema.
 type Document struct {
 	SchemaVersion int       `json:"schema_version"`
@@ -151,7 +154,7 @@ func (d Document) Validate(environment string, now time.Time) error {
 	if !profile.ValidEnvironmentName(environment) || d.Environment != environment {
 		return errors.New("Heimdal environment does not match the requested environment")
 	}
-	if d.IssuedAt.IsZero() || d.IssuedAt.After(now) || !d.ExpiresAt.After(now) || !d.ExpiresAt.After(d.IssuedAt) || d.ExpiresAt.Sub(d.IssuedAt) > MaxValidity {
+	if d.IssuedAt.IsZero() || d.IssuedAt.After(now.Add(MaxClockSkew)) || !d.ExpiresAt.After(now) || !d.ExpiresAt.After(d.IssuedAt) || d.ExpiresAt.Sub(d.IssuedAt) > MaxValidity {
 		return errors.New("Heimdal metadata is expired or has an invalid validity interval")
 	}
 	if len(d.PrivateHosts) > 128 {

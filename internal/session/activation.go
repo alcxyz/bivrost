@@ -34,6 +34,7 @@ type acrActivation struct {
 	mu                       sync.Mutex
 	session                  *podmanSession
 	config                   profile.Profile
+	localPrivateHosts        []string
 	services                 platformServices
 	directory, shell, script string
 	kubeconfig               string
@@ -218,7 +219,7 @@ func (a *acrActivation) listen(env []string) ([]string, error) {
 		if r.URL.Path == "/status" {
 			a.mu.Lock()
 			defer a.mu.Unlock()
-			state := doctorSessionStatus{Config: a.config, ProfileEnvironment: a.config.Environment, Kubeconfig: a.kubeconfig, KubernetesUnavailable: a.kubernetesUnavailable}
+			state := doctorSessionStatus{Config: a.config, LocalPrivateHosts: a.localPrivateHosts, ProfileEnvironment: a.config.Environment, Kubeconfig: a.kubeconfig, KubernetesUnavailable: a.kubernetesUnavailable}
 			if a.ctx.Err() != nil {
 				http.Error(w, "session ended", http.StatusGone)
 				return
@@ -291,6 +292,9 @@ func sessionRequest(ctx context.Context, endpoint string) (*http.Response, error
 }
 
 func sessionRequestBody(ctx context.Context, endpoint string, body io.Reader) (*http.Response, error) {
+	if insideRun() {
+		return nil, errors.New("this command is not available inside bivrost run; use a bivrost connect shell")
+	}
 	path := os.Getenv("BIVROST_CONTROL_FILE")
 	if os.Getenv("BIVROST_SESSION") == "" || path == "" {
 		return nil, errors.New("this command requires an active Bivrost Bash, Zsh, or PowerShell session")

@@ -1,7 +1,7 @@
 # Replace every example value before planning. Azure Public only.
 tenant_id       = "00000000-0000-0000-0000-000000000001"
 subscription_id = "00000000-0000-0000-0000-000000000002"
-location        = "norwayeast"
+location        = "westeurope"
 
 resource_group_name  = "example-existing-rg"
 storage_account_name = "exampleheimdalstore"

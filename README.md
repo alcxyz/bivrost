@@ -101,8 +101,10 @@ bivrost run -e <environment> -- sh -c 'terraform init && terraform plan'
 through a shell) and disconnects when it ends. Setup progress goes to stderr,
 so stdout holds only the command's output. The command's exit status is
 returned; Bivrost's own failures use 125, and 126 or 127 mean the command
-could not be executed or found. See `bivrost run --help` and
-[ADR 0016](docs/adr/0016-single-command-execution.md).
+could not be executed or found. The command has no session controller, so
+`switch`, `session publish`, `acr enable`, `doctor terraform` and
+`heimdal init` are unavailable inside it; use `--acr` for registry access. See
+`bivrost run --help` and [ADR 0016](docs/adr/0016-single-command-execution.md).
 
 Repeat `--private-host HOST` on `connect`, `run`, `acr connect`, or `switch` when the
 selected target needs additional exact private DNS hosts. These additions apply
@@ -118,7 +120,7 @@ or operate on Terraform state. Terraform retains the project's configuration
 and authentication selection; backends and providers configured for Azure CLI
 authentication can use the user's existing local Azure CLI login.
 
-### Terraform baseline (development branch)
+### Terraform baseline
 
 Inspect the subscriptions visible through your existing local Azure login:
 
@@ -155,7 +157,7 @@ or local file protection still stop connection setup.
 
 `bivrost doctor terraform` checks an explicitly selected backend container's
 properties; it does not establish state read/write or lease permissions. The
-remaining Terraform workflow and generic command execution are tracked in
+remaining Terraform workflow is tracked in
 [issue #5](https://github.com/alcxyz/bivrost/issues/5). Bivrost does not run
 `terraform init`, read state, or acquire a backend lock during connection or
 subscription discovery. Terraform commands you run yourself retain their normal
@@ -311,7 +313,7 @@ their contents in logs.
 Linux and macOS desktop discovery is configured separately from Bivrost. Native
 Windows and real GUI-client behavior require live QA.
 
-## Initialise a Heimdal metadata source (development)
+## Initialise a Heimdal metadata source (experimental)
 
 Heimdal uses one existing Azure container by default, named `heimdal`. Each
 connection environment has its own blob prefix inside that shared container.
@@ -341,18 +343,20 @@ cancellation; an abrupt crash may leave them in the OS temporary directory.
 For private storage, run inside a session whose bootstrap already routes the
 metadata hostname. Inside a session, the command verifies the active session
 through its controller, so it needs a Bash, Zsh, or PowerShell session; in
-other shells it refuses to run because the session controller is unavailable.
+other shells and inside `bivrost run` it refuses to run because the session
+controller is unavailable.
 The command prints the source locator for the downstream bootstrap
 configuration. Separate read and publish permissions; an ordinary consumer
 should not need publishing rights. A content digest verifies the referenced
 bytes, not publisher identity; trust also depends on the configured source and
 its access controls.
 
-Initial publication and opt-in retrieval are available on `dev`. Updating the
-current pointer and rollback commands remain subsequent work. Terraform-state
-PIM access is not a prerequisite.
+Heimdal is opt-in and experimental: initial publication and retrieval are
+available, while live Azure QA, updating the current pointer and rollback
+commands remain subsequent work. Terraform-state PIM access is not a
+prerequisite.
 
-### Fetch metadata when connecting (development)
+### Fetch metadata when connecting (experimental)
 
 Add a `heimdal` object to your existing connection profile or downstream
 catalogue entry. For example:
@@ -384,10 +388,10 @@ discovery or privilege activation is performed.
 
 `connect`, `connect --acr` and managed `switch` fetch a fresh pointer and revision
 after the bootstrap tunnel is ready. Bivrost validates them before adding the
-routes and opening the shell. Use `bivrost doctor` inside the supported session
-to inspect its effective configuration, including acquired routes. No response
-is cached on disk. Expiry is checked when metadata is acquired; there is no
-background refresh or automatic shutdown when metadata later expires.
+routes and opening the shell, and reports whether the metadata was validated or
+local fallback was used. No response is cached on disk. Expiry is checked when
+metadata is acquired; there is no background refresh or automatic shutdown when
+metadata later expires.
 
 A failed fetch or invalid document stops connection setup by default. Set
 `allow_local_fallback` to `true` only when your local profile is sufficient:

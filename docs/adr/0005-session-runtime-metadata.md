@@ -1,11 +1,12 @@
 # ADR 0005: Heimdal session-only runtime metadata
 
-- Status: Accepted; initial publication and retrieval on `dev`
+- Status: Accepted; initial publication and retrieval implemented (opt-in, experimental)
 - Date: 2026-09-20
+- Updated: 2026-10-07
 - Scope: Initial publication and startup retrieval; ongoing publication and rollback remain future work.
 
-Initial publication and opt-in startup retrieval are implemented on the
-development branch. They are not part of the current stable release.
+Initial publication and opt-in startup retrieval are released as experimental
+features; live Azure QA is pending.
 
 The future administrator/user command split and infrastructure ownership are
 recorded in [ADR 0013](0013-heimdal-adopter-lifecycle.md). Its planned user-facing

@@ -54,6 +54,12 @@ func runFailure(err error) error {
 	return &ExitError{Code: RunFailureExitCode, Err: err}
 }
 
+// runMarker tells Bivrost commands started by bivrost run that the session has
+// no controller, so they can say so instead of reporting a broken session.
+const runMarker = "BIVROST_RUN"
+
+func insideRun() bool { return os.Getenv(runMarker) == "1" }
+
 // sessionCommand is the command bivrost run executes in place of the shell.
 type sessionCommand struct {
 	argv []string
@@ -149,6 +155,7 @@ func runSessionCommand(ctx context.Context, running *atomic.Bool, services platf
 	if kubeUnavailable != nil {
 		fmt.Fprintln(os.Stderr, "Kubernetes is unavailable for this session: "+kubeUnavailable.Error()+". KUBECONFIG points to an isolated empty configuration.")
 	}
+	env = shellinit.ReplaceEnvironment(env, runMarker, "1")
 	commandCtx, cancelCommand := context.WithCancel(ctx)
 	defer cancelCommand()
 	running.Store(true)

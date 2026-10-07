@@ -125,6 +125,7 @@ func TestTerraformDoctorFailsClosedForStaleSessionMarkers(t *testing.T) {
 	t.Setenv("BIVROST_TEST_CALLED", called)
 	t.Setenv("BIVROST_SESSION", "stale")
 	t.Setenv("BIVROST_CONTROL_FILE", "")
+	t.Setenv("BIVROST_RUN", "")
 	command := cli.Command{Kind: cli.TerraformDoctor, Subscription: "sub", Account: "examplestate", Container: "tfstate"}
 	var output bytes.Buffer
 	err := runTerraformDoctor(context.Background(), command, &output)

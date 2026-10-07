@@ -230,6 +230,10 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 
 	finishForward(nil)
 	diagnostics.Event(ctx, diagnostics.EventForwardReady)
+	// Keep the profile and command-line routes apart from Heimdal routes, which
+	// apply to this session only.
+	// Never nil, so the status distinguishes no local routes from an older session.
+	localPrivateHosts := append([]string{}, c.PrivateHosts...)
 	if c.Heimdal != nil {
 		if services.fetchHeimdal == nil {
 			return errors.New("Heimdal reader is unavailable")
@@ -273,6 +277,7 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 	}
 	shellEnv := platformEnvironment(services.environ(), c.ProxyURL(), kubeconfigPath)
 	activation := newACRActivation(ctx, c, services, bastion.directory, shellName)
+	activation.localPrivateHosts = localPrivateHosts
 	activation.kubeconfig = kubeconfigPath
 	activation.publicationRequested = resumePublication
 	activation.kubernetesUnavailable = kubeUnavailable != nil
@@ -290,10 +295,10 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 	if err != nil {
 		return err
 	}
+	// The session has already switched, so a failed publication must not end it.
+	var publishErr error
 	if resumePublication && c.AKS != nil && !activation.kubernetesUnavailable {
-		if _, err := activation.publish(); err != nil {
-			return err
-		}
+		_, publishErr = activation.publish()
 	}
 	shellArgs, shellEnv, err = shellinit.PreparePrompt(bastion.directory, shellName, shellArgs, shellEnv, c)
 	if err != nil {
@@ -317,6 +322,8 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 	}
 	if activation.isPublished() {
 		fmt.Println("Kubernetes session published for local clients; use bivrost session path to see its new path.")
+	} else if publishErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: session sharing was not resumed: %v. The session remains connected; retry with bivrost session publish.\n", publishErr)
 	} else if resumePublication {
 		fmt.Println("Session sharing was not resumed because Kubernetes is unavailable.")
 	}
@@ -452,7 +459,7 @@ func platformEnvironment(env []string, proxy, kubeconfigPath string) []string {
 	for _, entry := range env {
 		key, _, _ := strings.Cut(entry, "=")
 		switch strings.ToUpper(key) {
-		case "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "BIVROST_SESSION", "KUBECONFIG":
+		case "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "BIVROST_SESSION", runMarker, "KUBECONFIG":
 			continue
 		}
 		result = append(result, entry)

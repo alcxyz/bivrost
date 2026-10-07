@@ -46,7 +46,7 @@ Keep saved plans and state private.
 `source_locator` is an informational output, **not** a supported user-onboarding
 schema. Combine it with reviewed bootstrap connectivity only when the consumer
 contract is implemented. Current Bivrost profiles can use the locator fields;
-see the [current configuration documentation](../../../README.md#fetch-metadata-when-connecting-development).
+see the [current configuration documentation](../../../README.md#fetch-metadata-when-connecting-experimental).
 
 ## Limitations
 

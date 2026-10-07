@@ -39,6 +39,9 @@ func (e *switchReconnectError) Error() string {
 }
 
 func runSwitch(ctx context.Context, command cli.Command) error {
+	if insideRun() {
+		return errors.New("bivrost switch is not available inside bivrost run; use a bivrost connect shell")
+	}
 	if os.Getenv("BIVROST_SWITCH_ALLOWED") != "1" || os.Getenv("BIVROST_SESSION") == "" {
 		return errors.New("run bivrost switch inside an active Bivrost Bash, Zsh, or PowerShell session")
 	}
