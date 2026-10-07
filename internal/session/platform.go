@@ -294,10 +294,10 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 	if err != nil {
 		return err
 	}
+	// The session has already switched, so a failed publication must not end it.
+	var publishErr error
 	if resumePublication && c.AKS != nil && !activation.kubernetesUnavailable {
-		if _, err := activation.publish(); err != nil {
-			return err
-		}
+		_, publishErr = activation.publish()
 	}
 	shellArgs, shellEnv, err = shellinit.PreparePrompt(bastion.directory, shellName, shellArgs, shellEnv, c)
 	if err != nil {
@@ -321,6 +321,8 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 	}
 	if activation.isPublished() {
 		fmt.Println("Kubernetes session published for local clients; use bivrost session path to see its new path.")
+	} else if publishErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: session sharing was not resumed: %v. The session remains connected; retry with bivrost session publish.\n", publishErr)
 	} else if resumePublication {
 		fmt.Println("Session sharing was not resumed because Kubernetes is unavailable.")
 	}

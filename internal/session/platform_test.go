@@ -451,6 +451,75 @@ func TestPlatformSessionKeepsHealthyKubernetesForward(t *testing.T) {
 	}
 }
 
+func TestPlatformSessionKeepsSwitchedSessionWhenSharingCannotResume(t *testing.T) {
+	t.Setenv("BIVROST_UPSTREAM_PROXY", "")
+	t.Setenv("BIVROST_ACR_UPSTREAM_PROXY", "")
+	// A relative base directory makes publication fail after the switch.
+	t.Setenv("XDG_RUNTIME_DIR", "relative")
+	directory := filepath.Join(t.TempDir(), "session-test")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	c := platformTestConfig(t)
+	c.AKS = &profile.AKS{Name: "cluster-one", ResourceGroup: "cluster-rg", Subscription: "cluster-subscription"}
+	sshDone := make(chan struct{})
+	var closeSSH sync.Once
+	shellStarted := false
+	services := platformServices{
+		environ:     func() []string { return []string{"PATH=/custom/bin"} },
+		selectShell: func() (string, []string, error) { return "/bin/bash", []string{"-i"}, nil },
+		reservePort: func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
+		startProxy: func(context.Context, profile.Profile) (*platformProxy, error) {
+			return &platformProxy{done: make(chan error), close: func() {}}, nil
+		},
+		openBastion: func(context.Context, profile.Profile) (*platformBastion, error) {
+			return &platformBastion{port: 32022, stateRoot: filepath.Dir(directory), directory: directory, sshConfig: filepath.Join(directory, "ssh_config"), done: make(chan struct{}), close: func() { _ = os.RemoveAll(directory) }}, nil
+		},
+		prepareKubeconfig: func(context.Context, profile.Profile, string, int) (kubeTarget, error) {
+			path := filepath.Join(directory, kubeconfigFilename)
+			if err := os.WriteFile(path, []byte("prepared"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return kubeTarget{path: path, host: "api.private.example", port: "443"}, nil
+		},
+		startSSH: func(context.Context, []string) (*platformProcess, error) {
+			return &platformProcess{done: sshDone, err: func() error { return nil }, stop: func() { closeSSH.Do(func() { close(sshDone) }) }}, nil
+		},
+		startShell: func(context.Context, string, []string, []string) (*platformProcess, error) {
+			shellStarted = true
+			done := make(chan struct{})
+			close(done)
+			return &platformProcess{done: done, err: func() error { return nil }, stop: func() {}}, nil
+		},
+		waitForward: func(context.Context, string, *platformProcess) error { return nil },
+	}
+	output, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	originalErr := os.Stderr
+	os.Stderr = output
+	defer func() { os.Stderr = originalErr }()
+
+	var shellRunning atomic.Bool
+	err = platformConnectWithPublication(context.Background(), c, &shellRunning, services, true)
+	os.Stderr = originalErr
+	if err != nil {
+		t.Fatalf("failed publication ended the switched session: %v", err)
+	}
+	if !shellStarted {
+		t.Fatal("shell did not start after the failed publication")
+	}
+	stderr, err := os.ReadFile(output.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(stderr), "Warning: session sharing was not resumed") {
+		t.Fatalf("missing publication warning on stderr: %q", stderr)
+	}
+}
+
 func TestPlatformSessionAbortsOnFatalKubeconfigFailures(t *testing.T) {
 	tests := []struct {
 		name       string
