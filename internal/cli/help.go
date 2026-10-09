@@ -189,8 +189,9 @@ authentication-browsers.d per organization) and whether connect may
 open it (interactive_connect).
 Defaults work without a file. The file uses XDG_CONFIG_HOME when
 set, otherwise the platform's native user configuration directory.
-Environment profiles can come from BIVROST_CATALOGUE_FILE or from
-the environments directory beside this settings file.
+Environment profiles can come from BIVROST_CATALOGUE_FILE, otherwise
+from catalogue.json beside this settings file, and from the
+environments directory there.
 
 Options
   -h, --help  Show this help

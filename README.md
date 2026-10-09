@@ -45,6 +45,11 @@ Verify the archive's SHA-256 against its entry in the checksum file using
 `Get-FileHash <archive> -Algorithm SHA256` in PowerShell. Checksums detect changed
 contents; the first release does not provide artifact signatures.
 
+With Nix, `nix run github:alcxyz/bivrost` runs the flake package, or add the
+flake's `packages.<system>.bivrost` to your configuration. That package also
+puts Azure CLI with the bastion and ssh extensions, OpenSSH, kubectl and
+kubelogin on Bivrost's PATH.
+
 The archive contains neutral example configuration, not deployment endpoints or
 credentials. Your deployment supplies configuration separately. Azure CLI,
 OpenSSH, tools for Kubernetes access and optional Podman remain prerequisites; the binary
@@ -194,7 +199,9 @@ Listing an environment or reading its catalogue entry is not authorization.
 
 Public Bivrost code consumes a generic JSON map of environment names to
 connection metadata. A downstream deployment can point Bivrost at that map
-with `BIVROST_CATALOGUE_FILE`:
+with `BIVROST_CATALOGUE_FILE`, or install it as `bivrost/catalogue.json` in the
+user configuration directory described below, which Bivrost reads when the
+variable is unset:
 
 ```json
 {

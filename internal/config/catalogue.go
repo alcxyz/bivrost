@@ -15,13 +15,28 @@ import (
 
 const (
 	CatalogueFileEnvironment = "BIVROST_CATALOGUE_FILE"
+	CatalogueFileName        = "catalogue.json"
 	MaxCatalogueBytes        = 1024 * 1024
 )
 
+// LoadCatalogue reads BIVROST_CATALOGUE_FILE when it is set, otherwise
+// catalogue.json in the user's bivrost configuration directory. A missing
+// default file is an empty catalogue.
 func LoadCatalogue() (map[string]Profile, error) {
 	path := os.Getenv(CatalogueFileEnvironment)
 	if path == "" {
-		return map[string]Profile{}, nil
+		root, err := UserRoot()
+		if err != nil {
+			return nil, fmt.Errorf("locate user configuration directory: %w", err)
+		}
+		path = filepath.Join(root, "bivrost", CatalogueFileName)
+		// Lstat distinguishes an absent catalogue from a broken symlink, which
+		// fails below instead of silently listing no environments.
+		if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+			return map[string]Profile{}, nil
+		} else if err != nil {
+			return nil, errors.New("could not inspect the user environment catalogue")
+		}
 	}
 	file, err := os.Open(path)
 	if err != nil {
