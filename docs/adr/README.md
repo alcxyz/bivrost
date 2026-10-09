@@ -22,3 +22,4 @@ described work already exists.
 | [0014](0014-heimdal-bootstrap-reference.md) | Heimdal bootstrap reference implementation | Accepted for reference example; CLI generation and live QA pending |
 | [0015](0015-authentication-browser-boundary.md) | Authentication browser selection and prompts | Accepted; live Entra and Windows WAM QA pending |
 | [0016](0016-single-command-execution.md) | Single command execution in a temporary session | Accepted |
+| [0017](0017-configuration-catalogue-and-nix-package.md) | Catalogue in user configuration and a Nix package | Accepted |
