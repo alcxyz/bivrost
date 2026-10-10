@@ -314,6 +314,12 @@ func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConn
 	}
 }
 
+// controlRequestTimeout only stops a hung test request; it is not a latency
+// requirement. Publish and switch handlers do real file work (create, chmod,
+// rename, read the target profile), which can take well over a second on a
+// loaded Windows runner with the race detector and on-access scanning.
+const controlRequestTimeout = 30 * time.Second
+
 type exitCodeError int
 
 func (e exitCodeError) Error() string { return "shell exited" }
@@ -340,7 +346,7 @@ func postSwitchRequest(t *testing.T, control activationControl, token string, bo
 	}
 	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{Proxy: nil}}
+	client := &http.Client{Timeout: controlRequestTimeout, Transport: &http.Transport{Proxy: nil}}
 	response, err := client.Do(request)
 	if err != nil {
 		t.Fatal(err)
@@ -360,7 +366,7 @@ func publicationControlPath(t *testing.T, control activationControl, endpoint st
 	t.Helper()
 	req, _ := http.NewRequest("POST", "http://"+control.Address+endpoint, nil)
 	req.Header.Set("Authorization", "Bearer "+control.Token)
-	client := &http.Client{Timeout: time.Second, Transport: &http.Transport{Proxy: nil}}
+	client := &http.Client{Timeout: controlRequestTimeout, Transport: &http.Transport{Proxy: nil}}
 	defer client.CloseIdleConnections()
 	resp, err := client.Do(req)
 	if err != nil {

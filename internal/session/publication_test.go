@@ -157,7 +157,7 @@ func TestPublicationControllerRequiresOwnerCapability(t *testing.T) {
 		}
 	}
 	control := readActivationControl(t, path)
-	client := &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: time.Second}
+	client := &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: controlRequestTimeout}
 	defer client.CloseIdleConnections()
 	for _, endpoint := range []string{"/publish", "/unpublish", "/publication-path"} {
 		req, _ := http.NewRequest("POST", "http://"+control.Address+endpoint, nil)
