@@ -29,8 +29,9 @@ current-context: bivrost-no-aks-configured
 `
 
 type platformProxy struct {
-	done  <-chan error
-	close func()
+	done          <-chan error
+	close         func()
+	replaceRoutes func(profile.Profile) error
 }
 
 type platformBastion struct {
@@ -253,14 +254,12 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 			if err != nil {
 				return errors.New("Heimdal supplied invalid private routes")
 			}
-			// Replace the bootstrap router before starting any user shell, registry
+			// Replace the bootstrap routes on the running proxy, keeping its
+			// listener and port, before starting any user shell, registry
 			// activation or controller. Never mutate an active session's routes.
-			proxy.close()
-			proxy, err = services.startProxy(ctx, updated)
-			if err != nil {
-				return errors.New("could not start the validated Heimdal session proxy")
+			if err := proxy.replaceRoutes(updated); err != nil {
+				return errors.New("could not install the validated Heimdal session routes")
 			}
-			defer proxy.close()
 			c = updated
 			fmt.Fprintln(out, "Heimdal metadata validated; private routes are ready for this session.")
 		}
@@ -410,7 +409,7 @@ func defaultPlatformServices() platformServices {
 			if err != nil {
 				return nil, err
 			}
-			return &platformProxy{done: proxy.done, close: proxy.close}, nil
+			return &platformProxy{done: proxy.done, close: proxy.close, replaceRoutes: proxy.replaceRoutes}, nil
 		},
 		openBastion: func(ctx context.Context, c profile.Profile) (*platformBastion, error) {
 			session, err := openBastion(ctx, c)

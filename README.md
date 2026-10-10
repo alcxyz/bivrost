@@ -45,6 +45,11 @@ Verify the archive's SHA-256 against its entry in the checksum file using
 `Get-FileHash <archive> -Algorithm SHA256` in PowerShell. Checksums detect changed
 contents; the first release does not provide artifact signatures.
 
+With Nix, `nix run github:alcxyz/bivrost` runs the flake package, or add the
+flake's `packages.<system>.bivrost` to your configuration. That package also
+puts Azure CLI with the bastion and ssh extensions, OpenSSH, kubectl and
+kubelogin on Bivrost's PATH.
+
 The archive contains neutral example configuration, not deployment endpoints or
 credentials. Your deployment supplies configuration separately. Azure CLI,
 OpenSSH, tools for Kubernetes access and optional Podman remain prerequisites; the binary
@@ -194,7 +199,9 @@ Listing an environment or reading its catalogue entry is not authorization.
 
 Public Bivrost code consumes a generic JSON map of environment names to
 connection metadata. A downstream deployment can point Bivrost at that map
-with `BIVROST_CATALOGUE_FILE`:
+with `BIVROST_CATALOGUE_FILE`, or install it as `bivrost/catalogue.json` in the
+user configuration directory described below, which Bivrost reads when the
+variable is unset:
 
 ```json
 {
@@ -308,7 +315,10 @@ After a crash, a stale publication file may remain. Its capability cannot
 authenticate to a replacement session's gateway. `bivrost session clean` removes
 recognised stale publications; publish also performs this cleanup. The files
 are private local capabilities: do not share them, commit them, or include
-their contents in logs.
+their contents in logs. The gateway token is part of the cluster's `proxy-url`,
+which `kubectl config view` prints unredacted, as may other tools that display
+kubeconfig settings; treat that output like the file. The token stops working
+when the publication is withdrawn or the session ends.
 
 Linux and macOS desktop discovery is configured separately from Bivrost. Native
 Windows and real GUI-client behavior require live QA.
@@ -369,7 +379,8 @@ catalogue entry. For example:
     "environment": "example",
     "container": "heimdal",
     "prefix": "environments/example",
-    "allow_local_fallback": false
+    "allow_local_fallback": false,
+    "allowed_route_suffixes": ["internal.example.net"]
   }
 }
 ```
@@ -400,6 +411,20 @@ any routes from an earlier download. This includes visibly reported permission
 denials and validation failures. Cancellation always stops setup. Profiles
 without `heimdal` retain the normal local-only behavior. Standalone `ssh` and
 proxy commands do not retrieve Heimdal metadata.
+
+Routed connections keep end-to-end TLS, and the session proxy allows only port
+443. No route, local or downloaded, may name a Microsoft sign-in, management or
+Graph endpoint in the public, US Government or China clouds, or any host below
+one. The optional
+`allowed_route_suffixes` list narrows what metadata may route: every downloaded
+route must equal a listed suffix or end with `.` followed by one, so
+`internal.example.net` permits `db.internal.example.net` but not
+`badinternal.example.net`. If any route is outside the list, the whole revision
+fails validation and is handled like any other validation failure, including
+`allow_local_fallback`. Suffixes are exact lowercase DNS names with at least
+two labels; an empty list is rejected. Without the field, or with `null`, any
+otherwise valid route is accepted. Profile `private_hosts` and `--private-host` routes are not
+subject to the list.
 
 ## Architecture diagrams
 

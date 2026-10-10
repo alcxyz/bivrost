@@ -152,7 +152,7 @@ func digest(data []byte) string {
 }
 
 func TestInitializationRejectsUnsafeRoutesAndLocations(t *testing.T) {
-	for _, host := range []string{"*.example", "https://example.com", "login.microsoftonline.com", "127.0.0.1", "a.example;whoami"} {
+	for _, host := range []string{"*.example", "https://example.com", "login.microsoftonline.com", "graph.microsoft.com", "127.0.0.1", "a.example;whoami"} {
 		if _, _, _, err := Create("example", []string{host}, time.Now(), DefaultValidity); err == nil {
 			t.Fatalf("accepted %q", host)
 		}

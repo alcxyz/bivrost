@@ -53,5 +53,12 @@ func fetchHeimdalRoutesWith(ctx context.Context, c profile.Profile,
 	if err != nil {
 		return nil, errors.New("Heimdal revision validation failed (schema, digest, environment, routes or validity)")
 	}
+	// The whole revision is rejected if any route is outside the local profile's
+	// allowed suffixes; partial route sets are never installed.
+	for _, host := range document.PrivateHosts {
+		if !source.AllowsRoute(host) {
+			return nil, errors.New("Heimdal revision validation failed: a route is outside the profile's allowed_route_suffixes")
+		}
+	}
 	return append([]string(nil), document.PrivateHosts...), nil
 }

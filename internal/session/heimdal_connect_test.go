@@ -12,23 +12,26 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	profile "github.com/alcxyz/bivrost/internal/config"
+	"github.com/alcxyz/bivrost/internal/heimdal"
 	shellinit "github.com/alcxyz/bivrost/internal/shell"
 )
 
 type heimdalConnectState struct {
-	fetch            func(context.Context, profile.Profile) ([]string, error)
-	secondProxyError error
-	events           []string
-	proxyProfiles    []profile.Profile
-	proxyCloses      []int
-	controller       []profile.Profile
-	bastionOpens     int
-	bastionCloses    int
-	sshStarts        int
-	sshStops         int
-	shellStarts      int
+	fetch             func(context.Context, profile.Profile) ([]string, error)
+	replaceError      error
+	events            []string
+	proxyProfiles     []profile.Profile
+	routeReplacements []profile.Profile
+	proxyCloses       []int
+	controller        []profile.Profile
+	bastionOpens      int
+	bastionCloses     int
+	sshStarts         int
+	sshStops          int
+	shellStarts       int
 }
 
 func (s *heimdalConnectState) record(event string) {
@@ -46,15 +49,21 @@ func heimdalConnectServices(t *testing.T, state *heimdalConnectState) platformSe
 			state.proxyProfiles = append(state.proxyProfiles, c)
 			attempt := len(state.proxyProfiles)
 			state.record(fmt.Sprintf("proxy-%d", attempt))
-			if attempt == 2 && state.secondProxyError != nil {
-				return nil, state.secondProxyError
-			}
 			state.proxyCloses = append(state.proxyCloses, 0)
 			index := len(state.proxyCloses) - 1
-			return &platformProxy{done: make(chan error), close: func() {
-				state.proxyCloses[index]++
-				state.record(fmt.Sprintf("close-proxy-%d", attempt))
-			}}, nil
+			return &platformProxy{
+				done: make(chan error),
+				close: func() {
+					state.proxyCloses[index]++
+					state.record(fmt.Sprintf("close-proxy-%d", attempt))
+				},
+				replaceRoutes: func(c profile.Profile) error {
+					c.PrivateHosts = append([]string(nil), c.PrivateHosts...)
+					state.routeReplacements = append(state.routeReplacements, c)
+					state.record(fmt.Sprintf("replace-routes-%d", attempt))
+					return state.replaceError
+				},
+			}, nil
 		},
 		openBastion: func(context.Context, profile.Profile) (*platformBastion, error) {
 			state.bastionOpens++
@@ -152,22 +161,23 @@ func TestPlatformConnectInstallsHeimdalRoutesBeforeControllerAndShell(t *testing
 	if err := platformConnectWith(context.Background(), c, &shellRunning, services); err != nil {
 		t.Fatalf("platformConnectWith() error = %v", err)
 	}
-	if got, want := len(state.proxyProfiles), 2; got != want {
+	// The routes are replaced on the running proxy; it is never rebound.
+	if got, want := len(state.proxyProfiles), 1; got != want {
 		t.Fatalf("proxy starts = %d, want %d", got, want)
 	}
 	if got, want := state.proxyProfiles[0].PrivateHosts, []string{"local.private.example"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("bootstrap proxy routes = %q, want %q", got, want)
 	}
-	if got, want := state.proxyProfiles[1].PrivateHosts, []string{"local.private.example", "remote.private.example"}; !reflect.DeepEqual(got, want) {
+	if len(state.routeReplacements) != 1 {
+		t.Fatalf("route replacements = %d, want 1", len(state.routeReplacements))
+	}
+	if got, want := state.routeReplacements[0].PrivateHosts, []string{"local.private.example", "remote.private.example"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("replacement proxy routes = %q, want %q", got, want)
 	}
-	if len(state.controller) != 1 || !reflect.DeepEqual(state.controller[0], state.proxyProfiles[1]) {
-		t.Fatalf("controller profile = %+v, want replacement proxy profile %+v", state.controller, state.proxyProfiles[1])
+	if len(state.controller) != 1 || !reflect.DeepEqual(state.controller[0], state.routeReplacements[0]) {
+		t.Fatalf("controller profile = %+v, want replacement route profile %+v", state.controller, state.routeReplacements[0])
 	}
-	assertHeimdalEventOrder(t, state.events, "forward-ready", "fetch", "close-proxy-1", "proxy-2", "controller", "shell")
-	if state.proxyCloses[0] == 0 || state.proxyCloses[1] == 0 {
-		t.Fatalf("proxy close counts = %v, want bootstrap and replacement closed", state.proxyCloses)
-	}
+	assertHeimdalEventOrder(t, state.events, "forward-ready", "fetch", "replace-routes-1", "controller", "shell", "close-proxy-1")
 	assertHeimdalTransportCleanup(t, state)
 }
 
@@ -194,13 +204,16 @@ func TestPlatformConnectFetchesFreshHeimdalRoutesForEveryConnection(t *testing.T
 	if fetches != 2 {
 		t.Fatalf("Heimdal fetches = %d, want one for each connection", fetches)
 	}
-	if got, want := len(state.proxyProfiles), 3; got != want {
-		t.Fatalf("proxy starts = %d, want bootstrap/replacement then fresh bootstrap", got)
+	if got, want := len(state.proxyProfiles), 2; got != want {
+		t.Fatalf("proxy starts = %d, want one fresh bootstrap proxy per connection", got)
 	}
-	if got, want := state.proxyProfiles[1].PrivateHosts, []string{"local.private.example", "first.remote.example"}; !reflect.DeepEqual(got, want) {
+	if len(state.routeReplacements) != 1 {
+		t.Fatalf("route replacements = %d, want only the first connection's", len(state.routeReplacements))
+	}
+	if got, want := state.routeReplacements[0].PrivateHosts, []string{"local.private.example", "first.remote.example"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("first replacement routes = %q, want %q", got, want)
 	}
-	if got, want := state.proxyProfiles[2].PrivateHosts, []string{"local.private.example"}; !reflect.DeepEqual(got, want) {
+	if got, want := state.proxyProfiles[1].PrivateHosts, []string{"local.private.example"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("fallback routes = %q, want only fresh local routes %q", got, want)
 	}
 	if state.shellStarts != 2 {
@@ -246,8 +259,8 @@ func TestPlatformConnectWithoutHeimdalDoesNotFetchOrReplaceProxy(t *testing.T) {
 	if err := platformConnectWith(context.Background(), c, &shellRunning, services); err != nil {
 		t.Fatalf("platformConnectWith() error = %v", err)
 	}
-	if len(state.proxyProfiles) != 1 || state.shellStarts != 1 {
-		t.Fatalf("proxy starts = %d, shell starts = %d; want one each", len(state.proxyProfiles), state.shellStarts)
+	if len(state.proxyProfiles) != 1 || len(state.routeReplacements) != 0 || state.shellStarts != 1 {
+		t.Fatalf("proxy starts = %d, route replacements = %d, shell starts = %d; want one start and shell, no replacement", len(state.proxyProfiles), len(state.routeReplacements), state.shellStarts)
 	}
 	if containsString(state.events, "fetch") {
 		t.Fatalf("nil Heimdal source fetched metadata: %v", state.events)
@@ -286,11 +299,48 @@ func TestPlatformConnectRejectsFailedOrPartialHeimdalRefresh(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), test.wantError) {
 				t.Fatalf("platformConnectWith() error = %v, want %q", err, test.wantError)
 			}
-			if len(state.proxyProfiles) != 1 || !reflect.DeepEqual(state.proxyProfiles[0].PrivateHosts, c.PrivateHosts) {
-				t.Fatalf("failed refresh installed partial routes: proxy profiles = %+v", state.proxyProfiles)
+			if len(state.routeReplacements) != 0 || len(state.proxyProfiles) != 1 || !reflect.DeepEqual(state.proxyProfiles[0].PrivateHosts, c.PrivateHosts) {
+				t.Fatalf("failed refresh installed partial routes: replacements = %+v", state.routeReplacements)
 			}
 			if state.shellStarts != 0 {
 				t.Fatal("shell started after failed Heimdal refresh")
+			}
+			assertHeimdalTransportCleanup(t, state)
+		})
+	}
+}
+
+func TestPlatformConnectAppliesAllowedRouteSuffixesOnlyToMetadata(t *testing.T) {
+	doc, pointer, _, err := heimdal.Create("example", []string{"outside.example.org"}, time.Now().Add(-time.Minute), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpointFor, read := heimdalTestReaders(pointer, doc)
+	for _, fallback := range []bool{false, true} {
+		t.Run(fmt.Sprintf("fallback=%v", fallback), func(t *testing.T) {
+			c := heimdalPlatformConfig(t)
+			// The local route is outside the list; only metadata routes are checked.
+			c.Heimdal.AllowedRouteSuffixes = []string{"inside.example.net"}
+			c.Heimdal.AllowLocalFallback = fallback
+			state := &heimdalConnectState{fetch: func(ctx context.Context, c profile.Profile) ([]string, error) {
+				return fetchHeimdalRoutesWith(ctx, c, endpointFor, read)
+			}}
+			services := heimdalConnectServices(t, state)
+			var shellRunning atomic.Bool
+
+			err := platformConnectWith(context.Background(), c, &shellRunning, services)
+			if !fallback {
+				if err == nil || !strings.Contains(err.Error(), "Heimdal metadata required") {
+					t.Fatalf("platformConnectWith() error = %v, want required metadata failure", err)
+				}
+				if state.shellStarts != 0 {
+					t.Fatal("shell started after rejected metadata routes")
+				}
+			} else if err != nil || state.shellStarts != 1 {
+				t.Fatalf("platformConnectWith() error = %v, shell starts = %d; want local fallback", err, state.shellStarts)
+			}
+			if len(state.routeReplacements) != 0 || len(state.proxyProfiles) != 1 || !reflect.DeepEqual(state.proxyProfiles[0].PrivateHosts, []string{"local.private.example"}) {
+				t.Fatalf("rejected metadata changed session routes: %+v", state.routeReplacements)
 			}
 			assertHeimdalTransportCleanup(t, state)
 		})
@@ -319,27 +369,26 @@ func TestPlatformConnectCancellationOverridesHeimdalFallbackAndCleansUp(t *testi
 	assertHeimdalTransportCleanup(t, state)
 }
 
-func TestPlatformConnectStopsBeforeShellWhenHeimdalReplacementProxyFails(t *testing.T) {
+func TestPlatformConnectStopsBeforeShellWhenHeimdalRouteReplacementFails(t *testing.T) {
 	c := heimdalPlatformConfig(t)
-	bindError := errors.New("synthetic replacement bind failure")
 	state := &heimdalConnectState{
 		fetch: func(context.Context, profile.Profile) ([]string, error) {
 			return []string{"remote.private.example"}, nil
 		},
-		secondProxyError: bindError,
+		replaceError: errors.New("synthetic route replacement failure"),
 	}
 	services := heimdalConnectServices(t, state)
 	var shellRunning atomic.Bool
 
 	err := platformConnectWith(context.Background(), c, &shellRunning, services)
-	if err == nil || !strings.Contains(err.Error(), "could not start the validated Heimdal session proxy") {
-		t.Fatalf("platformConnectWith() error = %v, want replacement proxy failure", err)
+	if err == nil || !strings.Contains(err.Error(), "could not install the validated Heimdal session routes") {
+		t.Fatalf("platformConnectWith() error = %v, want route replacement failure", err)
 	}
-	if len(state.proxyProfiles) != 2 {
-		t.Fatalf("proxy attempts = %d, want bootstrap and replacement", len(state.proxyProfiles))
+	if len(state.proxyProfiles) != 1 || len(state.routeReplacements) != 1 {
+		t.Fatalf("proxy starts = %d, route replacements = %d; want one each", len(state.proxyProfiles), len(state.routeReplacements))
 	}
 	if state.shellStarts != 0 {
-		t.Fatal("shell started without the replacement Heimdal proxy")
+		t.Fatal("shell started without the Heimdal session routes")
 	}
 	if len(state.proxyCloses) != 1 || state.proxyCloses[0] == 0 {
 		t.Fatalf("bootstrap proxy close counts = %v, want closed", state.proxyCloses)

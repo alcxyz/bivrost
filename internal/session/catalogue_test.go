@@ -254,3 +254,73 @@ func TestBrokenOverrideSymlinkDoesNotFallBack(t *testing.T) {
 		t.Fatal("broken override silently fell back")
 	}
 }
+
+func writeDefaultCatalogue(t *testing.T, catalogue map[string]profile.Profile) string {
+	t.Helper()
+	data, err := json.Marshal(catalogue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := profile.UserRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "bivrost", profile.CatalogueFileName)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestDefaultCatalogueFileIsReadWithoutEnvironment(t *testing.T) {
+	isolateCatalogueProfiles(t)
+	writeDefaultCatalogue(t, map[string]profile.Profile{"example": catalogueTestConfig(true)})
+	c, err := profile.LoadEnvironment("example", "")
+	if err != nil || !c.RequiresPIM || c.Environment != "example" {
+		t.Fatalf("default catalogue profile = %+v, %v", c, err)
+	}
+}
+
+func TestCatalogueEnvironmentTakesPrecedenceOverDefaultFile(t *testing.T) {
+	isolateCatalogueProfiles(t)
+	writeDefaultCatalogue(t, map[string]profile.Profile{"default-only": catalogueTestConfig(false)})
+	writeCatalogue(t, map[string]profile.Profile{"example": catalogueTestConfig(false)})
+	catalogue, err := profile.LoadCatalogue()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := catalogue["default-only"]; ok || len(catalogue) != 1 {
+		t.Fatalf("BIVROST_CATALOGUE_FILE should replace the default file: %v", catalogue)
+	}
+}
+
+func TestInvalidDefaultCatalogueIsAnError(t *testing.T) {
+	isolateCatalogueProfiles(t)
+	path := writeDefaultCatalogue(t, nil)
+	if err := os.WriteFile(path, []byte(`{"example":{"unknown":true}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := profile.LoadCatalogue(); err == nil {
+		t.Fatal("accepted an invalid default catalogue")
+	}
+}
+
+func TestBrokenDefaultCatalogueSymlinkDoesNotLookEmpty(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires extra Windows privileges")
+	}
+	isolateCatalogueProfiles(t)
+	path := writeDefaultCatalogue(t, nil)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(t.TempDir(), "missing"), path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := profile.LoadCatalogue(); err == nil {
+		t.Fatal("broken default catalogue symlink read as an empty catalogue")
+	}
+}

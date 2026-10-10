@@ -1,6 +1,6 @@
 # ADR 0003: Catalogue packaging boundary
 
-- Status: Accepted
+- Status: Accepted; amended by [ADR 0017](0017-configuration-catalogue-and-nix-package.md) (default `catalogue.json` in user configuration)
 - Date: 2026-09-20
 
 ## Context
