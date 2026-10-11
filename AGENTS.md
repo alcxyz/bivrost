@@ -11,6 +11,10 @@ GitHub is canonical; Forgejo is a pull mirror.
   stays in `dev`'s history; never delete either long-lived branch.
 - Never move published tags or replace published release assets.
 - Keep deployment catalogues, credentials and organization-specific metadata
-  outside this public repository.
+  outside this public repository. This covers code, test fixtures, commit
+  messages, PR bodies and review comments: no organization or application
+  names, real tenant or subscription IDs, or real cluster and host names. Use
+  obvious placeholders such as `example.com` and repeated-digit GUIDs. Generic
+  terms such as "tenant ID" or "sandbox" reveal nothing and need no scrubbing.
 - Build `./cmd/bivrost`; run `gofmt`, relevant tests and release-script tests
   when changing packaging or CI.
