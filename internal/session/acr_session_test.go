@@ -60,9 +60,10 @@ func TestACRSessionShellLifecycle(t *testing.T) {
 			var shellCtx context.Context
 			var proxyClosed, bastionClosed, sshStopped, shellStopped bool
 			services := platformServices{
-				environ:     func() []string { return ambient },
-				selectShell: func() (string, []string, error) { return "/bin/sh", []string{"-i"}, nil },
-				reservePort: func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
+				registerSession: testSessionRegistry(t),
+				environ:         func() []string { return ambient },
+				selectShell:     func() (string, []string, error) { return "/bin/sh", []string{"-i"}, nil },
+				reservePort:     func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
 				startProxy: func(context.Context, profile.Profile) (*platformProxy, error) {
 					return &platformProxy{close: func() { proxyClosed = true }}, nil
 				},

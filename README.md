@@ -212,8 +212,6 @@ variable is unset:
     "bastion_name": "<bastion-name>",
     "bastion_resource_group": "<resource-group>",
     "vm_resource_id": "<vm-resource-id>",
-    "proxy_port": 18080,
-    "socks_port": 18081,
     "aks": {
       "name": "<cluster-name>",
       "resource_group": "<cluster-resource-group>",
@@ -224,6 +222,13 @@ variable is unset:
   }
 }
 ```
+
+Each session chooses free loopback ports for its HTTPS proxy and SOCKS
+forward. Set `proxy_port` and `socks_port` only when a client needs a fixed
+proxy address; sessions configured with the same ports cannot run at the same
+time. The optional `max_sessions` limits how many sessions may run together
+while this environment is connected; see
+[concurrent sessions](#run-sessions-to-several-environments).
 
 The catalogue contains metadata only. It must not contain passwords, access
 tokens, private keys, or other credentials. A user may override an environment
@@ -322,6 +327,33 @@ when the publication is withdrawn or the session ends.
 
 Linux and macOS desktop discovery is configured separately from Bivrost. Native
 Windows and real GUI-client behavior require live QA.
+
+## Run sessions to several environments
+
+Sessions to different environments can run at the same time, each started in
+its own terminal with `bivrost connect` or `bivrost run`. Each session has its
+own proxy and SOCKS ports, Bastion tunnel, kubeconfig and publication, so
+`bivrost session publish` in each shell gives local tools one kubeconfig per
+environment. `publish`, `path` and `unpublish` act only on the shell's own
+session.
+
+```sh
+bivrost session list
+```
+
+lists the active sessions with their environment, command, start time,
+process ID and loopback ports. The number of sessions that may run together is
+the lowest `max_sessions` among the profiles of the active sessions and the new
+one. A profile without `max_sessions` allows as many sessions as `bivrost list`
+shows environments, so a catalogue with four environments allows four. Set
+`"max_sessions": 1` on an environment that must only be used alone.
+
+Only one session at a time can have Podman registry access, from `--acr` or
+`bivrost acr enable`, because the sessions share the Podman Machine. Records
+of sessions that ended abnormally stop counting at once; `bivrost session clean`
+removes them, and every new session does so too. Records live beside
+publications, in `$XDG_RUNTIME_DIR/bivrost/sessions` or the same fallback.
+See [ADR 0018](docs/adr/0018-concurrent-sessions.md).
 
 ## Initialise a Heimdal metadata source (experimental)
 

@@ -187,7 +187,8 @@ func TestNativeShellUsesConfiguredAbsoluteExecutable(t *testing.T) {
 func TestPlatformConnectRejectsNestedSessionBeforeStartingResources(t *testing.T) {
 	t.Parallel()
 	services := platformServices{
-		environ: func() []string { return []string{"BIVROST_SESSION=1"} },
+		registerSession: testSessionRegistry(t),
+		environ:         func() []string { return []string{"BIVROST_SESSION=1"} },
 		startProxy: func(context.Context, profile.Profile) (*platformProxy, error) {
 			t.Fatal("startProxy called for nested session")
 			return nil, nil
@@ -219,9 +220,11 @@ func TestPlatformSessionStopsShellAndOwnedResourcesWhenSSHEnds(t *testing.T) {
 	var capturedSSH []string
 
 	services := platformServices{
-		environ:     func() []string { return []string{"PATH=/custom/bin", "KUBECONFIG=/clusters/production"} },
-		selectShell: func() (string, []string, error) { return "/bin/sh", []string{"-i"}, nil },
-		reservePort: func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
+
+		registerSession: testSessionRegistry(t),
+		environ:         func() []string { return []string{"PATH=/custom/bin", "KUBECONFIG=/clusters/production"} },
+		selectShell:     func() (string, []string, error) { return "/bin/sh", []string{"-i"}, nil },
+		reservePort:     func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
 		startProxy: func(context.Context, profile.Profile) (*platformProxy, error) {
 			return &platformProxy{done: proxyDone, close: func() { proxyClosed.Store(true) }}, nil
 		},
@@ -308,9 +311,11 @@ func TestPlatformSessionDegradesOnlyKubernetesWhenAKSPreparationIsUnavailable(t 
 	var emptyContents []byte
 
 	services := platformServices{
-		environ:     func() []string { return []string{"PATH=/custom/bin", "KUBECONFIG=/clusters/ambient"} },
-		selectShell: func() (string, []string, error) { return "/bin/bash", []string{"-i"}, nil },
-		reservePort: func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
+
+		registerSession: testSessionRegistry(t),
+		environ:         func() []string { return []string{"PATH=/custom/bin", "KUBECONFIG=/clusters/ambient"} },
+		selectShell:     func() (string, []string, error) { return "/bin/bash", []string{"-i"}, nil },
+		reservePort:     func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
 		startProxy: func(_ context.Context, got profile.Profile) (*platformProxy, error) {
 			if !reflect.DeepEqual(got.PrivateHosts, c.PrivateHosts) {
 				t.Fatalf("proxy private hosts = %q, want %q", got.PrivateHosts, c.PrivateHosts)
@@ -408,9 +413,11 @@ func TestPlatformSessionKeepsHealthyKubernetesForward(t *testing.T) {
 	preparedPath := filepath.Join(directory, kubeconfigFilename)
 
 	services := platformServices{
-		environ:     func() []string { return []string{"PATH=/custom/bin"} },
-		selectShell: func() (string, []string, error) { return "/bin/bash", []string{"-i"}, nil },
-		reservePort: func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
+
+		registerSession: testSessionRegistry(t),
+		environ:         func() []string { return []string{"PATH=/custom/bin"} },
+		selectShell:     func() (string, []string, error) { return "/bin/bash", []string{"-i"}, nil },
+		reservePort:     func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
 		startProxy: func(context.Context, profile.Profile) (*platformProxy, error) {
 			return &platformProxy{done: proxyDone, close: func() {}}, nil
 		},
@@ -467,9 +474,10 @@ func TestPlatformSessionKeepsSwitchedSessionWhenSharingCannotResume(t *testing.T
 	var closeSSH sync.Once
 	shellStarted := false
 	services := platformServices{
-		environ:     func() []string { return []string{"PATH=/custom/bin"} },
-		selectShell: func() (string, []string, error) { return "/bin/bash", []string{"-i"}, nil },
-		reservePort: func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
+		registerSession: testSessionRegistry(t),
+		environ:         func() []string { return []string{"PATH=/custom/bin"} },
+		selectShell:     func() (string, []string, error) { return "/bin/bash", []string{"-i"}, nil },
+		reservePort:     func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
 		startProxy: func(context.Context, profile.Profile) (*platformProxy, error) {
 			return &platformProxy{done: make(chan error), close: func() {}}, nil
 		},
@@ -544,8 +552,9 @@ func TestPlatformSessionAbortsOnFatalKubeconfigFailures(t *testing.T) {
 			var proxyClosed, bastionClosed atomic.Bool
 			var sshStarted atomic.Bool
 			services := platformServices{
-				environ:     func() []string { return []string{"PATH=/custom/bin"} },
-				reservePort: func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
+				registerSession: testSessionRegistry(t),
+				environ:         func() []string { return []string{"PATH=/custom/bin"} },
+				reservePort:     func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
 				startProxy: func(context.Context, profile.Profile) (*platformProxy, error) {
 					return &platformProxy{done: make(chan error), close: func() { proxyClosed.Store(true) }}, nil
 				},

@@ -44,16 +44,27 @@ type Profile struct {
 	VMResourceID         string          `json:"vm_resource_id"`
 	ProxyPort            int             `json:"proxy_port"`
 	SOCKSPort            int             `json:"socks_port"`
+	MaxSessions          int             `json:"max_sessions,omitempty"`
 	SSHUser              string          `json:"ssh_user,omitempty"`
 	IdentityFile         string          `json:"identity_file,omitempty"`
 }
+
+// Standalone acr proxy, login and doctor need an address that separate commands
+// agree on, so they use these ports when a profile leaves its ports unset.
+const (
+	StandaloneProxyPort = 18080
+	StandaloneSOCKSPort = 18081
+)
+
+// MaxSessionsLimit bounds max_sessions so a typo cannot disable the limit.
+const MaxSessionsLimit = 64
 
 var registryPattern = regexp.MustCompile(`^[a-z0-9]{5,50}$`)
 var resourcePattern = regexp.MustCompile(`(?i)^/subscriptions/[a-z0-9-]+/resourceGroups/[a-z0-9_.()-]+/providers/Microsoft\.Compute/virtualMachines/[a-z0-9_.-]+$`)
 var namePattern = regexp.MustCompile(`^[a-zA-Z0-9_.()][a-zA-Z0-9_.()-]*$`)
 
 func Load(path string) (Profile, error) {
-	c := Profile{ProxyPort: 18080, SOCKSPort: 18081}
+	var c Profile
 	f, err := os.Open(path)
 	if err != nil {
 		return c, fmt.Errorf("open configuration: %w (copy config.example.json and fill in connection details)", err)
@@ -90,10 +101,24 @@ func (c Profile) ValidateProxy() error {
 			return errors.New("acr_probe_image must be a digest-pinned image in this environment's ACR registry")
 		}
 	}
-	if c.ProxyPort < 1024 || c.ProxyPort > 65535 || c.SOCKSPort < 1024 || c.SOCKSPort > 65535 || c.ProxyPort == c.SOCKSPort {
-		return errors.New("proxy_port and socks_port must be different ports between 1024 and 65535")
+	// Zero means a free port chosen for each session.
+	if !validPort(c.ProxyPort) || !validPort(c.SOCKSPort) || (c.ProxyPort != 0 && c.ProxyPort == c.SOCKSPort) {
+		return errors.New("proxy_port and socks_port must be omitted or different ports between 1024 and 65535")
 	}
 	return nil
+}
+
+func validPort(port int) bool { return port == 0 || (port >= 1024 && port <= 65535) }
+
+// WithStandalonePorts fills unset ports with the fixed standalone proxy ports.
+func (c Profile) WithStandalonePorts() Profile {
+	if c.ProxyPort == 0 {
+		c.ProxyPort = StandaloneProxyPort
+	}
+	if c.SOCKSPort == 0 {
+		c.SOCKSPort = StandaloneSOCKSPort
+	}
+	return c
 }
 
 func (c Profile) ValidatePlatform() error {
@@ -107,6 +132,9 @@ func (c Profile) ValidatePlatform() error {
 	}
 	if err := c.ValidateProxy(); err != nil {
 		return err
+	}
+	if c.MaxSessions < 0 || c.MaxSessions > MaxSessionsLimit {
+		return fmt.Errorf("max_sessions must be omitted or between 1 and %d", MaxSessionsLimit)
 	}
 	if c.AKS != nil && (!namePattern.MatchString(c.AKS.Name) || !namePattern.MatchString(c.AKS.ResourceGroup) || !namePattern.MatchString(c.AKS.Subscription)) {
 		return errors.New("aks must specify name, resource_group, and subscription")

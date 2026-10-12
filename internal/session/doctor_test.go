@@ -52,7 +52,7 @@ func TestDoctorValidatesProfileBeforeProbes(t *testing.T) {
 				c.ProxyPort = -1
 				return c
 			}(),
-			wantErr: "proxy_port and socks_port must be different ports between 1024 and 65535",
+			wantErr: "proxy_port and socks_port must be omitted or different ports between 1024 and 65535",
 		},
 		{
 			name: "invalid registry",

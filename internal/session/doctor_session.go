@@ -111,6 +111,13 @@ func sessionUsesProfile(status *doctorSessionStatus, c profile.Profile) bool {
 	}
 	active := status.Config
 	active.PrivateHosts, c.PrivateHosts = nil, nil
+	// A session records the ports it chose for a profile that left them unset.
+	if c.ProxyPort == 0 {
+		active.ProxyPort = 0
+	}
+	if c.SOCKSPort == 0 {
+		active.SOCKSPort = 0
+	}
 	selected, _ := json.Marshal(c)
 	connected, _ := json.Marshal(active)
 	return bytes.Equal(selected, connected)

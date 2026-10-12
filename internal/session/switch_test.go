@@ -187,9 +187,10 @@ func testPlatformSwitchLifecycle(t *testing.T, firstShellErr error, failNextConn
 	var firstProxyClosed, firstBastionClosed, firstSSHStopped atomic.Bool
 	nextConnectionFailure := errors.New("synthetic next connection failure")
 	services := platformServices{
-		environ:     func() []string { return []string{"PATH=/custom/bin"} },
-		selectShell: func() (string, []string, error) { return "/bin/bash", []string{"-i"}, nil },
-		reservePort: func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
+		registerSession: testSessionRegistry(t),
+		environ:         func() []string { return []string{"PATH=/custom/bin"} },
+		selectShell:     func() (string, []string, error) { return "/bin/bash", []string{"-i"}, nil },
+		reservePort:     func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
 		startProxy: func(_ context.Context, c profile.Profile) (*platformProxy, error) {
 			current := session.Add(1)
 			if current == 2 && (!firstProxyClosed.Load() || !firstBastionClosed.Load() || !firstSSHStopped.Load()) {

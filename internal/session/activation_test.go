@@ -25,6 +25,7 @@ import (
 func activationTestServices(t *testing.T, starts, logins *atomic.Int32) platformServices {
 	t.Helper()
 	return platformServices{
+		registerSession: testSessionRegistry(t),
 		startPodman: func(_ context.Context, _ profile.Profile, directory string) (*podmanSession, error) {
 			starts.Add(1)
 			path := filepath.Join(directory, "podman-session.conf")
