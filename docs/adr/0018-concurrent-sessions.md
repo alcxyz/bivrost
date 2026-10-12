@@ -74,7 +74,11 @@ Users can keep sessions to several environments open in separate terminals
 and publish each of them. Each session pays its own Bastion tunnel and SSH
 forwards. Downstream catalogues that set the same fixed ports for every
 environment must drop them, or give each environment its own, before their
-users can run sessions side by side.
+users can run sessions side by side. Profiles given with `--config` are not
+counted, so users without a catalogue get one session unless their profiles
+set `max_sessions`. The standalone `acr proxy`, `acr login` and `acr doctor`
+no longer meet a session on the old default ports; a profile that needs that
+combination sets fixed ports.
 
 Same-user processes can read the registry and see which environments are
 connected and on which loopback ports; ADR 0001's trusted-host boundary

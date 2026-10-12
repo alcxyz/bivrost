@@ -67,6 +67,20 @@ func TestRegisterSessionAppliesLowestActiveLimit(t *testing.T) {
 	if got := len(activeTestSessions(t, directory)); got != 2 {
 		t.Fatalf("active sessions = %d, want 2", got)
 	}
+	// The lower limit ended with the staging session.
+	registerTestSession(t, directory, "production", 3)
+}
+
+func TestSessionLimitEndsWithItsSession(t *testing.T) {
+	directory := t.TempDir()
+	staging := registerTestSession(t, directory, "staging", 2)
+	registerTestSession(t, directory, "sandbox", 4)
+	staging.close()
+	registerTestSession(t, directory, "infra", 4)
+	registerTestSession(t, directory, "production", 4)
+	if got := sessionLimitOf(activeTestSessions(t, directory)); got != 4 {
+		t.Fatalf("limit after the restricting session exited = %d, want 4", got)
+	}
 }
 
 func TestRegisterSessionHonoursExclusiveProfile(t *testing.T) {
@@ -264,8 +278,12 @@ func TestPlatformSessionChoosesPortsPerSession(t *testing.T) {
 	}
 	selected := c
 	selected.ProxyPort, selected.SOCKSPort = 0, 0
-	if !sessionUsesProfile(&status, selected) {
+	checked, matched := matchSessionProfile(&status, selected)
+	if !matched {
 		t.Error("doctor did not recognise the session of a profile without fixed ports")
+	}
+	if checked.ProxyURL() != shellinit.EnvironmentValue(capturedEnv, "HTTPS_PROXY") || checked.SOCKSPort != socks {
+		t.Errorf("doctor checks ports %d/%d, want the session's %d/%d", checked.ProxyPort, checked.SOCKSPort, proxyPort, socks)
 	}
 	if got := activeTestSessions(t, registry); len(got) != 0 {
 		t.Errorf("session record remains after exit: %+v", got)

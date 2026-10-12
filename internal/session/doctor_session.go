@@ -93,8 +93,11 @@ func runDoctor(ctx context.Context, command cli.Command, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if status != nil && !sessionUsesProfile(status, c) {
-			status = nil
+		if status != nil {
+			var matched bool
+			if c, matched = matchSessionProfile(status, c); !matched {
+				status = nil
+			}
 		}
 	}
 	c.SkipPullProbe = command.NoPull
@@ -103,6 +106,16 @@ func runDoctor(ctx context.Context, command cli.Command, out io.Writer) error {
 
 // The session's routes extend the profile's with command-line and Heimdal
 // routes, so compare routes only with the session's local ones.
+// matchSessionProfile reports whether the session uses c and, if so, returns c
+// with the ports the session chose, which the checks then use.
+func matchSessionProfile(status *doctorSessionStatus, c profile.Profile) (profile.Profile, bool) {
+	if !sessionUsesProfile(status, c) {
+		return c, false
+	}
+	c.ProxyPort, c.SOCKSPort = status.Config.ProxyPort, status.Config.SOCKSPort
+	return c, true
+}
+
 func sessionUsesProfile(status *doctorSessionStatus, c profile.Profile) bool {
 	for _, host := range c.PrivateHosts {
 		if !containsExactHost(status.localRoutes(), host) {

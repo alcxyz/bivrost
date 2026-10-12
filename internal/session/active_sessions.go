@@ -60,7 +60,8 @@ func sessionRegistryRoot() (string, error) {
 }
 
 // sessionLimit is the profile's max_sessions or, when unset, as many sessions
-// as there are environments to choose from, and at least one.
+// as bivrost list shows environments, and at least one. Profiles given with
+// --config are not listed, so they count only through max_sessions.
 func sessionLimit(c profile.Profile) int {
 	if c.MaxSessions > 0 {
 		return c.MaxSessions
@@ -81,7 +82,8 @@ func registerPlatformSession(ctx context.Context, c profile.Profile, command str
 }
 
 // registerSession records a new session unless the active sessions already
-// reach the lowest limit among them and the new one.
+// reach the lowest limit among them and the new one. Each record keeps its own
+// profile's limit, so a limit ends with the session that set it.
 func registerSession(ctx context.Context, directory string, c profile.Profile, command string, limit int) (*activeSession, error) {
 	guard, err := lockSessionRegistry(ctx, directory)
 	if err != nil {
@@ -97,7 +99,7 @@ func registerSession(ctx context.Context, directory string, c profile.Profile, c
 		effective = active
 	}
 	if len(active) >= effective {
-		return nil, fmt.Errorf("%d Bivrost sessions are active and the session limit is %d; exit one first (bivrost session list shows them)", len(active), effective)
+		return nil, fmt.Errorf("%d Bivrost sessions are active and the session limit is %d; exit one first (bivrost session list shows them), or set max_sessions in the profiles to change the limit", len(active), effective)
 	}
 	idBytes := make([]byte, 8)
 	if _, err := rand.Read(idBytes); err != nil {
@@ -117,7 +119,7 @@ func registerSession(ctx context.Context, directory string, c profile.Profile, c
 	}
 	s := &activeSession{directory: directory, path: path, file: f, record: sessionRecord{
 		ID: id, Environment: c.Environment, Command: command, PID: os.Getpid(),
-		Started: time.Now().UTC().Truncate(time.Second), MaxSessions: effective,
+		Started: time.Now().UTC().Truncate(time.Second), MaxSessions: limit,
 	}}
 	if err := s.writeLocked(); err != nil {
 		s.removeLocked()

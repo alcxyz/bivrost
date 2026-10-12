@@ -346,7 +346,13 @@ process ID and loopback ports. The number of sessions that may run together is
 the lowest `max_sessions` among the profiles of the active sessions and the new
 one. A profile without `max_sessions` allows as many sessions as `bivrost list`
 shows environments, so a catalogue with four environments allows four. Set
-`"max_sessions": 1` on an environment that must only be used alone.
+`"max_sessions": 1` on an environment that must only be used alone. Profiles
+given with `--config` are not listed, so with no catalogue the default is one
+session; set `max_sessions` in those profiles to run several.
+
+The standalone `acr proxy`, `acr login` and `acr doctor` use `proxy_port` and
+`socks_port`, or 18080 and 18081, so they no longer find the ports of a session
+whose profile omits them; set fixed ports in the profile to combine them.
 
 Only one session at a time can have Podman registry access, from `--acr` or
 `bivrost acr enable`, because the sessions share the Podman Machine. Records
