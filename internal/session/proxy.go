@@ -120,12 +120,18 @@ func startProxy(ctx context.Context, c profile.Profile) (_ *runningProxy, result
 	if err != nil {
 		return nil, err
 	}
-	if upstream != nil && (upstream.Hostname() == "localhost" || upstream.Hostname() == "127.0.0.1" || upstream.Hostname() == "::1") && upstream.Port() == strconv.Itoa(c.ProxyPort) {
-		return nil, errors.New("upstream proxy cannot point back at bivrost")
-	}
+	// Without a configured port, the proxy listens on a free port for this session.
 	listener, err := net.Listen("tcp4", profile.Loopback(c.ProxyPort))
 	if err != nil {
-		return nil, errors.New("proxy port is occupied; stop the existing listener or choose a different proxy_port")
+		if c.ProxyPort == 0 {
+			return nil, errors.New("could not open a local proxy port")
+		}
+		return nil, errors.New("proxy port is occupied; stop the existing listener, or omit proxy_port to use a free port for each session")
+	}
+	c.ProxyPort = listener.Addr().(*net.TCPAddr).Port
+	if upstream != nil && (upstream.Hostname() == "localhost" || upstream.Hostname() == "127.0.0.1" || upstream.Hostname() == "::1") && upstream.Port() == strconv.Itoa(c.ProxyPort) {
+		listener.Close()
+		return nil, errors.New("upstream proxy cannot point back at bivrost")
 	}
 	router := proxy.NewRouter(proxy.Config{Registry: c.Registry, PrivateHosts: append([]string(nil), c.PrivateHosts...), SOCKSAddress: profile.Loopback(c.SOCKSPort), DirectProxy: upstream})
 	server := &http.Server{ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024, ErrorLog: log.New(io.Discard, "", 0), BaseContext: func(net.Listener) context.Context { return ctx }}

@@ -31,7 +31,10 @@ Transport isolation is tracked in [issue #28](https://github.com/alcxyz/bivrost/
 ## Credentials and cleanup
 
 Normal session exit closes owned tunnels and removes owned configuration.
-Abrupt process or host termination can leave files behind. Bivrost does not
+Abrupt process or host termination can leave files behind. The registry of
+active sessions records each session's environment and loopback ports, never
+credentials; other processes of the same user can read it, as they can reach
+the ports themselves. Bivrost does not
 revoke the user's Azure CLI login, erase image layers, or log out Podman's
 registry credentials. Registry login uses Podman's normal credential storage
 and may outlive the session. Concurrent sessions and ordinary Podman commands

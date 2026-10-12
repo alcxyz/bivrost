@@ -37,6 +37,7 @@ const (
 	SessionUnpublish
 	SessionPath
 	SessionClean
+	SessionList
 	HeimdalInit
 	Run
 )
@@ -132,9 +133,9 @@ func Parse(args []string) (Command, error) {
 		if len(args) == 3 && (args[2] == "--help" || args[2] == "-h") && HelpText("session "+args[1]) != "" {
 			return Command{Kind: Help, HelpTopic: "session " + args[1]}, nil
 		}
-		kind, ok := map[string]Kind{"publish": SessionPublish, "unpublish": SessionUnpublish, "path": SessionPath, "clean": SessionClean}[args[1]]
+		kind, ok := map[string]Kind{"publish": SessionPublish, "unpublish": SessionUnpublish, "path": SessionPath, "clean": SessionClean, "list": SessionList}[args[1]]
 		if !ok || len(args) != 2 {
-			return Command{}, errors.New("use bivrost session publish, unpublish, path, or clean without options")
+			return Command{}, errors.New("use bivrost session publish, unpublish, path, clean, or list without options")
 		}
 		return Command{Kind: kind}, nil
 	case "doctor":

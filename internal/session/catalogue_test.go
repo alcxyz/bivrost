@@ -195,7 +195,7 @@ func TestCatalogueRejectsInvalidInput(t *testing.T) {
 	}
 }
 
-func TestCatalogueProfilesUseConfigPortDefaults(t *testing.T) {
+func TestCatalogueProfilesUsePortsPerSessionByDefault(t *testing.T) {
 	isolateCatalogueProfiles(t)
 	c := catalogueTestConfig(false)
 	data, err := json.Marshal(c)
@@ -221,10 +221,26 @@ func TestCatalogueProfilesUseConfigPortDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := catalogue["example"]; got.ProxyPort != 18080 || got.SOCKSPort != 18081 {
-		t.Fatalf("catalogue ports = %d/%d, want defaults 18080/18081", got.ProxyPort, got.SOCKSPort)
+	if got := catalogue["example"]; got.ProxyPort != 0 || got.SOCKSPort != 0 {
+		t.Fatalf("catalogue ports = %d/%d, want 0/0 for ports chosen per session", got.ProxyPort, got.SOCKSPort)
 	}
 	fields["proxy_port"] = 0
+	fields["socks_port"] = 18081
+	data, err = json.Marshal(map[string]any{"example": fields})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	catalogue, err = profile.LoadCatalogue()
+	if err != nil {
+		t.Fatalf("catalogue rejected an explicit zero proxy port: %v", err)
+	}
+	if got := catalogue["example"]; got.ProxyPort != 0 || got.SOCKSPort != 18081 {
+		t.Fatalf("catalogue ports = %d/%d, want 0/18081", got.ProxyPort, got.SOCKSPort)
+	}
+	fields["proxy_port"] = 1023
 	data, err = json.Marshal(map[string]any{"example": fields})
 	if err != nil {
 		t.Fatal(err)
@@ -233,7 +249,7 @@ func TestCatalogueProfilesUseConfigPortDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := profile.LoadCatalogue(); err == nil {
-		t.Fatal("catalogue accepted an explicit zero proxy port")
+		t.Fatal("catalogue accepted a privileged proxy port")
 	}
 }
 
