@@ -206,6 +206,14 @@ func TestSessionLimitDefaultsToEnvironmentCount(t *testing.T) {
 	if got := sessionLimit(profile.Profile{MaxSessions: 2}); got != 2 {
 		t.Fatalf("limit with max_sessions = %d, want 2", got)
 	}
+	broken := filepath.Join(t.TempDir(), "catalogue.json")
+	if err := os.WriteFile(broken, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(profile.CatalogueFileEnvironment, broken)
+	if got := sessionLimit(profile.Profile{}); got != 1 {
+		t.Fatalf("limit with an unreadable catalogue = %d, want 1", got)
+	}
 }
 
 func TestPlatformSessionChoosesPortsPerSession(t *testing.T) {

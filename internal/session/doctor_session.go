@@ -104,8 +104,6 @@ func runDoctor(ctx context.Context, command cli.Command, out io.Writer) error {
 	return platformDoctorWithSession(ctx, c, out, status)
 }
 
-// The session's routes extend the profile's with command-line and Heimdal
-// routes, so compare routes only with the session's local ones.
 // matchSessionProfile reports whether the session uses c and, if so, returns c
 // with the ports the session chose, which the checks then use.
 func matchSessionProfile(status *doctorSessionStatus, c profile.Profile) (profile.Profile, bool) {
@@ -116,6 +114,8 @@ func matchSessionProfile(status *doctorSessionStatus, c profile.Profile) (profil
 	return c, true
 }
 
+// The session's routes extend the profile's with command-line and Heimdal
+// routes, so compare routes only with the session's local ones.
 func sessionUsesProfile(status *doctorSessionStatus, c profile.Profile) bool {
 	for _, host := range c.PrivateHosts {
 		if !containsExactHost(status.localRoutes(), host) {

@@ -67,7 +67,13 @@ func sessionLimit(c profile.Profile) int {
 		return c.MaxSessions
 	}
 	count, err := profile.CountEnvironments()
-	if err != nil || count < 1 {
+	if err != nil {
+		// A local or --config profile can start without the catalogue, so say
+		// why its limit is lower than expected.
+		fmt.Fprintf(os.Stderr, "Warning: environments could not be counted for the default session limit (%v); this session allows no other session. Set max_sessions in the profile to choose a limit.\n", err)
+		return 1
+	}
+	if count < 1 {
 		return 1
 	}
 	return count
