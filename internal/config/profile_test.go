@@ -37,10 +37,10 @@ func TestLoadConfig(t *testing.T) {
 			wantRegistry: "exampleregistry",
 		},
 		{
-			name:         "port defaults",
+			name:         "ports per session by default",
 			contents:     `{"registry":"exampleregistry"}`,
-			wantProxy:    18080,
-			wantSOCKS:    18081,
+			wantProxy:    0,
+			wantSOCKS:    0,
 			wantRegistry: "exampleregistry",
 		},
 		{
@@ -66,7 +66,12 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name:     "same ports",
 			contents: strings.Replace(valid, `"socks_port": 28081`, `"socks_port": 28080`, 1),
-			wantErr:  "proxy_port and socks_port must be different",
+			wantErr:  "proxy_port and socks_port must be omitted or different",
+		},
+		{
+			name:     "privileged port",
+			contents: strings.Replace(valid, `"socks_port": 28081`, `"socks_port": 80`, 1),
+			wantErr:  "proxy_port and socks_port must be omitted or different",
 		},
 	}
 
@@ -203,5 +208,37 @@ func TestValidResourceNameRejectsLeadingDash(t *testing.T) {
 		if got := ValidResourceName(tt.name); got != tt.want {
 			t.Errorf("ValidResourceName(%q) = %t, want %t", tt.name, got, tt.want)
 		}
+	}
+}
+
+func TestValidatePlatformMaxSessions(t *testing.T) {
+	t.Parallel()
+	c := Profile{
+		Subscription:         "subscription",
+		BastionName:          "bastion",
+		BastionResourceGroup: "network-rg",
+		VMResourceID:         "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/jump",
+	}
+	for _, valid := range []int{0, 1, MaxSessionsLimit} {
+		c.MaxSessions = valid
+		if err := c.ValidatePlatform(); err != nil {
+			t.Errorf("max_sessions %d rejected: %v", valid, err)
+		}
+	}
+	for _, invalid := range []int{-1, MaxSessionsLimit + 1} {
+		c.MaxSessions = invalid
+		if err := c.ValidatePlatform(); err == nil || !strings.Contains(err.Error(), "max_sessions") {
+			t.Errorf("max_sessions %d error = %v, want rejection", invalid, err)
+		}
+	}
+}
+
+func TestWithStandalonePorts(t *testing.T) {
+	t.Parallel()
+	if got := (Profile{}).WithStandalonePorts(); got.ProxyPort != StandaloneProxyPort || got.SOCKSPort != StandaloneSOCKSPort {
+		t.Fatalf("unset ports = %d/%d, want standalone defaults", got.ProxyPort, got.SOCKSPort)
+	}
+	if got := (Profile{ProxyPort: 28080, SOCKSPort: 28081}).WithStandalonePorts(); got.ProxyPort != 28080 || got.SOCKSPort != 28081 {
+		t.Fatalf("configured ports = %d/%d, want them unchanged", got.ProxyPort, got.SOCKSPort)
 	}
 }

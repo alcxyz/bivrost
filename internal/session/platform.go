@@ -29,6 +29,7 @@ current-context: bivrost-no-aks-configured
 `
 
 type platformProxy struct {
+	port          int
 	done          <-chan error
 	close         func()
 	replaceRoutes func(profile.Profile) error
@@ -57,6 +58,7 @@ type platformServices struct {
 	environ           func() []string
 	selectShell       func() (string, []string, error)
 	reservePort       func(int) (net.Listener, error)
+	registerSession   func(context.Context, profile.Profile, string) (*activeSession, error)
 	startProxy        func(context.Context, profile.Profile) (*platformProxy, error)
 	openBastion       func(context.Context, profile.Profile) (*platformBastion, error)
 	prepareKubeconfig func(context.Context, profile.Profile, string, int) (kubeTarget, error)
@@ -145,11 +147,26 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 		return err
 	}
 
+	sessionKind := "connect"
+	if runCommand {
+		sessionKind = "run"
+	}
+	registration, err := services.registerSession(ctx, c, sessionKind)
+	if err != nil {
+		return err
+	}
+	defer registration.close()
+
+	// Without a configured port, each session forwards SOCKS on its own free port.
 	socksReservation, err := services.reservePort(c.SOCKSPort)
 	if err != nil {
-		return errors.New("SOCKS port is occupied; another Bivrost connection may already be running")
+		if c.SOCKSPort == 0 {
+			return errors.New("could not reserve a local SOCKS port")
+		}
+		return fmt.Errorf("SOCKS port %d is occupied; another Bivrost session may be using it. Omit socks_port from the profile to use a free port for each session", c.SOCKSPort)
 	}
 	defer socksReservation.Close()
+	c.SOCKSPort = socksReservation.Addr().(*net.TCPAddr).Port
 
 	apiPort := 0
 	var apiReservation net.Listener
@@ -167,6 +184,12 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 		return err
 	}
 	defer proxy.close()
+	if c.ProxyPort == 0 {
+		c.ProxyPort = proxy.port
+	}
+	if err := registration.setPorts(c.ProxyPort, c.SOCKSPort); err != nil {
+		return err
+	}
 
 	bastion, err := services.openBastion(ctx, c)
 	if err != nil {
@@ -280,6 +303,7 @@ func platformSession(ctx context.Context, c profile.Profile, shellRunning *atomi
 	activation.kubeconfig = kubeconfigPath
 	activation.publicationRequested = resumePublication
 	activation.kubernetesUnavailable = kubeUnavailable != nil
+	activation.registration = registration
 	defer activation.close()
 	if c.ACRSession {
 		if err := activation.enable(); err != nil {
@@ -404,12 +428,14 @@ func defaultPlatformServices() platformServices {
 		reservePort: func(port int) (net.Listener, error) {
 			return net.Listen("tcp4", profile.Loopback(port))
 		},
+		registerSession: registerPlatformSession,
 		startProxy: func(ctx context.Context, c profile.Profile) (*platformProxy, error) {
 			proxy, err := startProxy(ctx, c)
 			if err != nil {
 				return nil, err
 			}
-			return &platformProxy{done: proxy.done, close: proxy.close, replaceRoutes: proxy.replaceRoutes}, nil
+			_, current := proxy.currentRoutes()
+			return &platformProxy{port: current.ProxyPort, done: proxy.done, close: proxy.close, replaceRoutes: proxy.replaceRoutes}, nil
 		},
 		openBastion: func(ctx context.Context, c profile.Profile) (*platformBastion, error) {
 			session, err := openBastion(ctx, c)

@@ -41,9 +41,10 @@ func (s *heimdalConnectState) record(event string) {
 func heimdalConnectServices(t *testing.T, state *heimdalConnectState) platformServices {
 	t.Helper()
 	return platformServices{
-		environ:     func() []string { return []string{"PATH=/custom/bin"} },
-		selectShell: func() (string, []string, error) { state.record("select-shell"); return "/bin/sh", []string{"-i"}, nil },
-		reservePort: func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
+		registerSession: testSessionRegistry(t),
+		environ:         func() []string { return []string{"PATH=/custom/bin"} },
+		selectShell:     func() (string, []string, error) { state.record("select-shell"); return "/bin/sh", []string{"-i"}, nil },
+		reservePort:     func(port int) (net.Listener, error) { return net.Listen("tcp4", profile.Loopback(port)) },
 		startProxy: func(_ context.Context, c profile.Profile) (*platformProxy, error) {
 			c.PrivateHosts = append([]string(nil), c.PrivateHosts...)
 			state.proxyProfiles = append(state.proxyProfiles, c)

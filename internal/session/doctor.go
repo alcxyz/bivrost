@@ -108,12 +108,15 @@ func platformDoctorWithSession(ctx context.Context, c profile.Profile, out io.Wr
 	}
 	if available["az"] && available["ssh"] && c.Registry != "" {
 		proxyErr := error(nil)
+		proxied := c
 		if session == nil {
-			proxyErr = requireProxy(ctx, c)
+			// Outside a session, only a standalone acr proxy can be checked.
+			proxied = c.WithStandalonePorts()
+			proxyErr = requireProxy(ctx, proxied)
 		}
 		if proxyErr != nil {
 			report("NOT VERIFIED", "ACR connectivity", "run bivrost connect --acr with the same --env or --config; it starts the proxy and checks ACR connectivity automatically")
-		} else if err := registryCheck(ctx, c); err != nil {
+		} else if err := registryCheck(ctx, proxied); err != nil {
 			report("NOT VERIFIED", "ACR connectivity", "proxy is running, but ACR is not reachable; verify the matching Bastion connection and private network access")
 		} else {
 			report("OK", "ACR connectivity", "TLS and registry endpoint reachable through the proxy")

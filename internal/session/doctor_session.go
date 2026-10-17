@@ -93,12 +93,25 @@ func runDoctor(ctx context.Context, command cli.Command, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if status != nil && !sessionUsesProfile(status, c) {
-			status = nil
+		if status != nil {
+			var matched bool
+			if c, matched = matchSessionProfile(status, c); !matched {
+				status = nil
+			}
 		}
 	}
 	c.SkipPullProbe = command.NoPull
 	return platformDoctorWithSession(ctx, c, out, status)
+}
+
+// matchSessionProfile reports whether the session uses c and, if so, returns c
+// with the ports the session chose, which the checks then use.
+func matchSessionProfile(status *doctorSessionStatus, c profile.Profile) (profile.Profile, bool) {
+	if !sessionUsesProfile(status, c) {
+		return c, false
+	}
+	c.ProxyPort, c.SOCKSPort = status.Config.ProxyPort, status.Config.SOCKSPort
+	return c, true
 }
 
 // The session's routes extend the profile's with command-line and Heimdal
@@ -111,6 +124,13 @@ func sessionUsesProfile(status *doctorSessionStatus, c profile.Profile) bool {
 	}
 	active := status.Config
 	active.PrivateHosts, c.PrivateHosts = nil, nil
+	// A session records the ports it chose for a profile that left them unset.
+	if c.ProxyPort == 0 {
+		active.ProxyPort = 0
+	}
+	if c.SOCKSPort == 0 {
+		active.SOCKSPort = 0
+	}
 	selected, _ := json.Marshal(c)
 	connected, _ := json.Marshal(active)
 	return bytes.Equal(selected, connected)

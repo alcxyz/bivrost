@@ -85,9 +85,13 @@ func TestPlatformProxyWithoutRegistry(t *testing.T) {
 	if err := c.ValidatePlatform(); err == nil {
 		t.Fatal("platform-only profile accepted conflicting proxy ports")
 	}
-	c.ProxyPort = 0
+	c.ProxyPort = 70000
 	if err := c.ValidatePlatform(); err == nil {
 		t.Fatal("platform-only profile accepted an invalid proxy port")
+	}
+	c.ProxyPort = 0
+	if err := c.ValidatePlatform(); err != nil {
+		t.Fatalf("platform-only profile rejected a proxy port chosen per session: %v", err)
 	}
 }
 

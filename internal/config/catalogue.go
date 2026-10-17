@@ -69,7 +69,7 @@ func LoadCatalogue() (map[string]Profile, error) {
 		if !environmentPattern.MatchString(name) {
 			return nil, fmt.Errorf("environment catalogue contains invalid name %q", name)
 		}
-		c := Profile{ProxyPort: 18080, SOCKSPort: 18081}
+		var c Profile
 		profileDecoder := json.NewDecoder(bytes.NewReader(raw))
 		profileDecoder.DisallowUnknownFields()
 		if err := profileDecoder.Decode(&c); err != nil {
@@ -146,12 +146,37 @@ func localEnvironmentNames() ([]string, error) {
 	return names, nil
 }
 
-func ListEnvironments(w io.Writer) error {
+// CountEnvironments returns the number of targets bivrost list shows: catalogue
+// environments and local profiles, each name counted once.
+func CountEnvironments() (int, error) {
+	catalogue, localNames, err := environmentSources()
+	if err != nil {
+		return 0, err
+	}
+	names := make(map[string]struct{}, len(catalogue)+len(localNames))
+	for name := range catalogue {
+		names[name] = struct{}{}
+	}
+	for _, name := range localNames {
+		names[name] = struct{}{}
+	}
+	return len(names), nil
+}
+
+func environmentSources() (map[string]Profile, []string, error) {
 	catalogue, err := LoadCatalogue()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	localNames, err := localEnvironmentNames()
+	if err != nil {
+		return nil, nil, err
+	}
+	return catalogue, localNames, nil
+}
+
+func ListEnvironments(w io.Writer) error {
+	catalogue, localNames, err := environmentSources()
 	if err != nil {
 		return err
 	}
