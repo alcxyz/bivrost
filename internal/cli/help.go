@@ -26,7 +26,7 @@ Access
   connect       Open a local shell for platform commands
   run           Run one local command in a temporary session
   switch        Reconnect the active shell to another environment
-  session       Share the active Kubernetes session with other local tools
+  session       Share a Kubernetes session; list active sessions
   ssh           Open a shell on the management VM
   acr           Access container images with Podman
 
@@ -78,7 +78,7 @@ This command publishes route-only metadata. Configure a profile's heimdal source
 for retrieval on connect. Updating an existing pointer and rollback are not
 implemented yet. No Terraform state is used.
 `
-	case "session", "session publish", "session unpublish", "session path", "session clean":
+	case "session", "session publish", "session unpublish", "session path", "session clean", "session list":
 		return `Share a Kubernetes session with other local tools, explicitly.
 
 Usage: bivrost session <command>
@@ -87,9 +87,11 @@ Commands
   publish     Publish this session's temporary kubeconfig; print its path
   unpublish   Withdraw it and close published client connections
   path        Print the current published kubeconfig path
-  clean       Remove stale publications (can run outside a session)
+  clean       Remove stale publications and session records
+  list        List active connect and run sessions
 
-Publish, unpublish and path require an active Bash, Zsh or PowerShell session.
+Publish, unpublish and path require an active Bash, Zsh or PowerShell session
+and act on that session only. Clean and list also work outside a session.
 Publish and path print only a path, suitable for use with --kubeconfig.
 Inside the connected shell, plain k9s uses the session's KUBECONFIG.
 In another terminal, use k9s --kubeconfig PATH with the published path.
@@ -105,6 +107,13 @@ Switching withdraws the old publication and publishes a new target with a
 new path. Existing clients are disconnected, never silently retargeted.
 Exit withdraws the publication. After a crash, stale files cannot connect;
 clean removes them, and publish also performs this cleanup.
+
+Sessions to different environments can run at the same time, each in its own
+terminal with its own ports and publication. The number of concurrent sessions
+is limited by the lowest max_sessions among the active sessions' profiles, or
+by the number of configured environments when no profile sets it. Only one
+session at a time can have Podman registry access (--acr or acr enable).
+A session that ended abnormally is no longer counted; clean removes its record.
 `
 	case "acr":
 		return `Enable local Podman access to private container images.
@@ -275,7 +284,7 @@ Options
 	switch topic {
 	case "connect":
 		description = "Open a local shell with platform connectivity."
-		notes = "Azure sign-in is reused. Proxy variables and kubeconfig apply only\nto this shell; your personal Kubernetes context stays unchanged. Kubernetes\nsetup is automatic; missing client tools or unavailable AKS credentials leave\nother commands usable with an isolated empty kubeconfig.\nRepeat --private-host for exact DNS hosts needed only by this session;\nthese additions are not saved. Exit the shell to disconnect. Add --acr\nfor Podman registry access, or run bivrost acr enable inside a Bash, Zsh,\nor PowerShell session. Podman is required only when ACR is enabled."
+		notes = "Azure sign-in is reused. Proxy variables and kubeconfig apply only\nto this shell; your personal Kubernetes context stays unchanged. Kubernetes\nsetup is automatic; missing client tools or unavailable AKS credentials leave\nother commands usable with an isolated empty kubeconfig.\nRepeat --private-host for exact DNS hosts needed only by this session;\nthese additions are not saved. Exit the shell to disconnect. Add --acr\nfor Podman registry access, or run bivrost acr enable inside a Bash, Zsh,\nor PowerShell session. Podman is required only when ACR is enabled.\nOther terminals can connect to further environments at the same time, up to\nthe session limit; bivrost session list shows active sessions."
 		example = "bivrost connect -e example"
 	case "run":
 		description = "Run one local command in a temporary platform session, then disconnect."
@@ -295,11 +304,11 @@ Options
 		example = "bivrost doctor -e example"
 	case "acr proxy":
 		description = "Run an advanced standalone HTTPS proxy for Podman."
-		notes = "Advanced transport mode; persistent service proxy settings are manual.\nFor automatic setup and cleanup, use bivrost connect --acr.\nDo not run this proxy on the same port as an ACR session."
+		notes = "Advanced transport mode; persistent service proxy settings are manual.\nFor automatic setup and cleanup, use bivrost connect --acr.\nListens on proxy_port, or 18080 when the profile omits it; acr login and\nacr doctor look for it there. Private ACR traffic uses socks_port, or 18081."
 		example = "bivrost acr proxy -e example"
 	case "acr connect":
 		description = "Compatibility alias for bivrost connect --acr."
-		notes = "Starts its own proxy and Bastion connection, then authenticates Podman.\nProxy and Podman settings apply only to this shell. Repeat --private-host for\nexact DNS hosts needed only by this session; these additions are not saved.\nExit to disconnect. Uses an existing local Podman engine or running Podman\nMachine. Stop a standalone acr proxy first if it occupies the same port."
+		notes = "Starts its own proxy and Bastion connection, then authenticates Podman.\nProxy and Podman settings apply only to this shell. Repeat --private-host for\nexact DNS hosts needed only by this session; these additions are not saved.\nExit to disconnect. Uses an existing local Podman engine or running Podman\nMachine. Only one session at a time can have registry access."
 		example = "bivrost acr connect -e example"
 	case "acr login":
 		description = "Refresh Podman's registry login."

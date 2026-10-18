@@ -1,6 +1,6 @@
 # ADR 0001: Session ownership and user configuration isolation
 
-- Status: Accepted
+- Status: Accepted; amended by [ADR 0018](0018-concurrent-sessions.md) (concurrent sessions and a registry of active sessions)
 - Date: 2026-09-20
 
 ## Context

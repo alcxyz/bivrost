@@ -33,6 +33,12 @@ type sessionPublication struct {
 }
 
 func publicationRoot() (string, error) {
+	return runtimeDirectory("published", "publication")
+}
+
+// runtimeDirectory returns the private bivrost/NAME directory under
+// XDG_RUNTIME_DIR, falling back to XDG_STATE_HOME or ~/.local/state.
+func runtimeDirectory(name, label string) (string, error) {
 	base := os.Getenv("XDG_RUNTIME_DIR")
 	if base == "" {
 		base = os.Getenv("XDG_STATE_HOME")
@@ -45,11 +51,11 @@ func publicationRoot() (string, error) {
 		}
 	}
 	if !filepath.IsAbs(base) {
-		return "", errors.New("publication base directory must be absolute")
+		return "", errors.New(label + " base directory must be absolute")
 	}
-	for index, dir := range []string{filepath.Join(base, "bivrost"), filepath.Join(base, "bivrost", "published")} {
+	for index, dir := range []string{filepath.Join(base, "bivrost"), filepath.Join(base, "bivrost", name)} {
 		if err := os.MkdirAll(dir, 0700); err != nil {
-			return "", errors.New("cannot create publication directory")
+			return "", errors.New("cannot create " + label + " directory")
 		}
 		info, err := os.Lstat(dir)
 		forbidden := os.FileMode(0022)
@@ -57,10 +63,10 @@ func publicationRoot() (string, error) {
 			forbidden = 0077
 		}
 		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || (runtime.GOOS != "windows" && info.Mode().Perm()&forbidden != 0) {
-			return "", errors.New("publication directory must be private and must not be a symlink")
+			return "", errors.New(label + " directory must be private and must not be a symlink")
 		}
 	}
-	return filepath.Join(base, "bivrost", "published"), nil
+	return filepath.Join(base, "bivrost", name), nil
 }
 
 func (a *acrActivation) publish() (string, error) {

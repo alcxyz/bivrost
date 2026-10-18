@@ -44,7 +44,8 @@ func newRunTestSession(t *testing.T, command func(s *runTestSession) *platformPr
 	}
 	var closeSSH sync.Once
 	s.services = platformServices{
-		environ: func() []string { return []string{"PATH=/custom/bin", "KUBECONFIG=/clusters/ambient"} },
+		registerSession: testSessionRegistry(t),
+		environ:         func() []string { return []string{"PATH=/custom/bin", "KUBECONFIG=/clusters/ambient"} },
 		selectShell: func() (string, []string, error) {
 			t.Fatal("selectShell called for a run command")
 			return "", nil, nil
@@ -271,7 +272,8 @@ func TestRunCommandTerminatedDuringSetupDoesNotStart(t *testing.T) {
 func TestRunCommandRejectsNestedSession(t *testing.T) {
 	t.Parallel()
 	services := platformServices{
-		environ: func() []string { return []string{"BIVROST_SESSION=1"} },
+		registerSession: testSessionRegistry(t),
+		environ:         func() []string { return []string{"BIVROST_SESSION=1"} },
 		startProxy: func(context.Context, profile.Profile) (*platformProxy, error) {
 			t.Fatal("startProxy called for nested session")
 			return nil, nil

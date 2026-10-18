@@ -98,7 +98,12 @@ func Run(args []string, version string) (resultErr error) {
 	case cli.SessionPath:
 		return runSessionPublication(ctx, "path")
 	case cli.SessionClean:
-		return cleanPublications(ctx)
+		if err := cleanPublications(ctx); err != nil {
+			return err
+		}
+		return cleanSessionRegistry(ctx)
+	case cli.SessionList:
+		return listSessions(ctx, os.Stdout)
 	}
 	if command.Kind == cli.Switch {
 		return runSwitch(ctx, command)
@@ -173,6 +178,10 @@ func Run(args []string, version string) (resultErr error) {
 		if err := c.ValidateACR(); err != nil {
 			return err
 		}
+	}
+	// The standalone proxy and the commands that find it need a fixed address.
+	if command.Kind == cli.ACRProxy || command.Kind == cli.ACRLogin || command.Kind == cli.ACRDoctor {
+		c = c.WithStandalonePorts()
 	}
 
 	switch command.Kind {

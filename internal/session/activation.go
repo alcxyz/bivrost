@@ -44,6 +44,7 @@ type acrActivation struct {
 	pending                  *profile.Profile
 	publication              *sessionPublication
 	publicationRequested     bool
+	registration             *activeSession
 	// withdrawals counts unpublish requests, so a publish that waited on
 	// cleanup does not undo a withdrawal made in the meantime.
 	withdrawals uint64
@@ -81,13 +82,25 @@ func (a *acrActivation) enable() error {
 	if !a.config.SkipRegistryLogin && !profile.ValidResourceName(a.config.RegistrySubscription) {
 		return errors.New("set registry_subscription to the subscription containing ACR")
 	}
+	// Sessions started by platformSession are registered; only tests that
+	// build an activation directly have no registration.
+	if a.registration != nil {
+		if err := a.registration.claimACR(); err != nil {
+			return &acrClaimError{err}
+		}
+	}
+	accepted := false
+	defer func() {
+		if !accepted && a.registration != nil {
+			a.registration.releaseACR()
+		}
+	}()
 	finish := diagnostics.Step(a.ctx, diagnostics.EventPodmanSession)
 	s, err := a.services.startPodman(a.ctx, a.config, a.directory)
 	finish(err)
 	if err != nil {
 		return err
 	}
-	accepted := false
 	defer func() {
 		if !accepted {
 			s.close()
@@ -119,6 +132,13 @@ func (a *acrActivation) enable() error {
 	}
 	return nil
 }
+
+// acrClaimError reports that another session holds registry access. Its
+// message is safe to return to the shell, unlike other activation failures.
+type acrClaimError struct{ err error }
+
+func (e *acrClaimError) Error() string { return e.err.Error() }
+func (e *acrClaimError) Unwrap() error { return e.err }
 
 // Unix shells source fixed variable names and quoted values. PowerShell reads
 // data-only JSON and assigns allowlisted environment variables without executing it.
@@ -248,7 +268,12 @@ func (a *acrActivation) listen(env []string) ([]string, error) {
 			return
 		}
 		if err := a.enable(); err != nil {
-			http.Error(w, "ACR activation failed; check Podman availability, Azure login, and registry access", http.StatusConflict)
+			var claimed *acrClaimError
+			if errors.As(err, &claimed) {
+				http.Error(w, claimed.Error(), http.StatusConflict)
+				return
+			}
+			http.Error(w, "ACR activation failed; check Podman availability, Azure login, and registry access, then retry", http.StatusConflict)
 			return
 		}
 		fmt.Fprintln(w, "ACR is enabled for this session.")
@@ -338,8 +363,12 @@ func enableSessionACR(ctx context.Context) error {
 		return err
 	}
 	defer response.Body.Close()
-	io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
 	if response.StatusCode != http.StatusOK {
+		// The controller's conflict messages contain no session details.
+		if message := strings.TrimSpace(string(body)); response.StatusCode == http.StatusConflict && message != "" {
+			return errors.New(message)
+		}
 		return errors.New("ACR activation failed; check Podman availability, Azure login, and registry access, then retry")
 	}
 	fmt.Println("ACR is enabled for this session.")
