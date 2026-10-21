@@ -7,8 +7,10 @@ GitHub is canonical; Forgejo is a pull mirror.
 - Branch feature work from `dev` and target feature PRs at `dev`.
 - `main` is the release line. Only promote `dev` to `main`, with a new
   `VERSION`, after all checks pass.
-- Squash feature PRs. Merge release promotions with a merge commit so `main`
-  stays in `dev`'s history; never delete either long-lived branch.
+- Merge feature PRs and release promotions by fast-forward: push the reviewed
+  head to the base branch, which GitHub records as merging the PR. Never use
+  GitHub's merge, squash or rebase buttons; `main` only changes through `dev`.
+  Never delete either long-lived branch.
 - Never move published tags or replace published release assets.
 - Keep deployment catalogues, credentials and organization-specific metadata
   outside this public repository. This covers code, test fixtures, commit

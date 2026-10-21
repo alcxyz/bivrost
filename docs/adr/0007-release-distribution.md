@@ -21,11 +21,14 @@ before creating `v<VERSION>` at that exact tested commit. Existing version tags
 are never moved: later commits with the same version do not publish a new release.
 Only `main` publishes releases; `dev` produces test results and snapshots.
 Required promotion checks reject direct feature PRs to `main`, fork branches
-named `dev`, missing version bumps and reused tags. Use squash merges for
-feature PRs and merge commits for release promotions, matching the maintained
-public applications, so `main` never holds a commit missing from `dev`. The
-2026-09-30 update replaced squash promotions, whose required back-merge into
-`dev` caused repeated reconciliation work.
+named `dev`, missing version bumps and reused tags. Feature PRs and release
+promotions merge by fast-forward, matching the maintained public applications:
+the reviewed head is pushed to the base branch, which GitHub records as merging
+the PR, so `main` equals `dev` at each promotion and never holds a commit
+missing from `dev`. The 2026-09-30 update replaced squash promotions, whose
+required back-merge into `dev` caused repeated reconciliation work; the
+2026-10-21 update replaced squash feature merges and promotion merge commits,
+which GitHub writes as new commits, with fast-forward.
 No release-please bot is introduced.
 
 This supersedes the initial direct-to-main development flow. Existing tags and

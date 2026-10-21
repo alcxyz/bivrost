@@ -275,8 +275,8 @@ for package ownership and dependency rules.
 its CI tests and builds snapshots without publishing releases. Promote `dev`
 to protected `main` with a new `VERSION` when preparing a release. The
 promotion check rejects feature branches, unchanged versions and existing tags.
-Squash feature PRs and merge release promotions with a merge commit, so no
-back-merge into `dev` is needed.
+Feature PRs and release promotions merge by fast-forward, so `main` equals
+`dev` at each promotion and no back-merge is needed.
 
 Consumers tracking `main` receive the release line; consumers tracking `dev`
 explicitly opt into unreleased work. Release tags identify immutable published
