@@ -34,8 +34,10 @@ Bivrost.
 
 ## Install a release
 
-Download the archive for your operating system and CPU from
-[GitHub Releases](https://github.com/alcxyz/bivrost/releases), together with its
+With Homebrew on macOS or Linux, `brew install alcxyz/tap/bivrost`. On Arch
+Linux, install `bivrost-bin` from the AUR, for example `yay -S bivrost-bin`;
+it pulls in Azure CLI and OpenSSH. Otherwise, download the archive for your
+operating system and CPU from [GitHub Releases](https://github.com/alcxyz/bivrost/releases), together with its
 `bivrost_<version>_checksums.txt`. Linux/macOS archives are `.tar.gz`; Windows
 archives are `.zip`. Extract the archive and put `bivrost` (or `bivrost.exe`)
 on your PATH, then run `bivrost version` and `bivrost --help`.
@@ -63,7 +65,8 @@ CI tests all three operating systems and
 checks GoReleaser snapshot archives. Main publishes a new version only after
 those checks pass. Existing tags and published assets are never replaced.
 Retry an interrupted release by rerunning its original workflow; a newer commit
-needs a new version. Local archive validation uses
+needs a new version. After publishing, the workflow updates the Homebrew cask
+and the AUR package from the same archives. Local archive validation uses
 `goreleaser release --snapshot --clean` followed by
 `python3 scripts/check-release-archives.py`; use the toolchain in `.go-version`
 and GoReleaser version pinned in the workflow.

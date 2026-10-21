@@ -84,13 +84,32 @@ jobs:
         with:
           go-version-file: .go-version
           cache: false
+      # Mint before tagging, so a credential failure stops the release before the tag exists.
+      - name: Mint Homebrew tap token
+        id: tap-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          app-id: ${{ vars.TAP_APP_ID }}
+          private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
+          owner: alcxyz
+          repositories: homebrew-tap
+          permission-contents: write
+      # Check the AUR key before tagging, so a missing or malformed key stops the release before the tag exists.
+      - name: Check AUR key
+        run: |
+          key="$(mktemp)"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$AUR_KEY" > "$key"
+          ssh-keygen -y -f "$key" > /dev/null
+        env:
+          AUR_KEY: ${{ secrets.AUR_KEY }}
       - name: Resolve version and tag
         id: version
         run: python3 scripts/release.py prepare
         env:
           GH_TOKEN: ${{ github.token }}
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
-        if: steps.version.outputs.should_release == 'true'
+        if: steps.version.outputs.should_package == 'true'
         with:
           version: v2.18.2
           args: release --clean --skip=publish
@@ -99,3 +118,10 @@ jobs:
         run: python3 scripts/release.py publish
         env:
           GH_TOKEN: ${{ github.token }}
+      - name: Publish Homebrew cask and AUR package
+        if: steps.version.outputs.should_package == 'true'
+        run: python3 scripts/release.py packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAP_GITHUB_TOKEN: ${{ steps.tap-token.outputs.token }}
+          AUR_KEY: ${{ secrets.AUR_KEY }}

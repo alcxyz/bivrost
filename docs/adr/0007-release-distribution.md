@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-20
-- Updated: 2026-09-30
+- Updated: 2026-09-30, 2026-10-21
 
 ## Context
 
@@ -50,9 +50,34 @@ its checks, rather than retagging a newer commit.
 
 Keep write permission restricted to the main release job. Pull requests only
 build snapshots with read permission. A snapshot is a CI artifact, not an
-installation recommendation or release. Signing, Homebrew and AUR publishing
-remain follow-up work with separate credential and ownership setup. Existing
-Nix packaging continues consuming pinned source.
+installation recommendation or release. Signing remains follow-up work.
+Existing Nix packaging continues consuming pinned source.
+
+## Homebrew and AUR packages
+
+The 2026-10-21 update adds a Homebrew cask in `alcxyz/homebrew-tap` and the
+`bivrost-bin` AUR package, matching the other released Go applications.
+GoReleaser generates both from the same archives, but does not push them
+(`skip_upload`). Once the release is published, `scripts/release.py packages`
+publishes them:
+
+- It requires a published release whose tag still resolves to the tested
+  commit, and a checksum manifest identical to the published one. A rerun
+  rebuilds the archives, so it stops instead of describing different bytes.
+- The cask and PKGBUILD must name the release version and carry only digests
+  from that manifest.
+- Only the newest published release publishes packages, so rerunning an
+  older release's workflow cannot roll the tap or the AUR back.
+- The cask goes to the tap with a short-lived token from the
+  `alcxyz-release-tap` GitHub App, minted before tagging and limited to the
+  tap's contents. The PKGBUILD and `.SRCINFO` go to the AUR with the AUR account
+  key in the shared `AUR_KEY` secret, checked before tagging, and only to a
+  host presenting one of AUR's published host keys. Unchanged files are left alone, so rerunning the same
+  workflow revision completes a partial publication.
+
+The cask clears the macOS quarantine flag after installation because the
+binaries are unsigned. A failed package step leaves the published release
+unchanged; rerun the workflow once the tap or AUR recovers.
 
 ## Reproducibility boundary
 
@@ -71,3 +96,6 @@ new release. Do not claim cross-toolchain byte identity.
 - Replacing existing release assets on retry would make a version ambiguous.
 - Requiring Nix or package-manager publishing would block standalone consumers
   on unrelated distribution infrastructure.
+- Letting GoReleaser push the cask and AUR package while uploading assets would
+  publish them before the draft release is verified and made public.
+- A Homebrew formula (`brews`) is deprecated in GoReleaser in favour of casks.
