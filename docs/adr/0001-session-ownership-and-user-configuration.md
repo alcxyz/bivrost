@@ -1,7 +1,9 @@
 # ADR 0001: Session ownership and user configuration isolation
 
-- Status: Accepted; amended by [ADR 0018](0018-concurrent-sessions.md) (concurrent sessions and a registry of active sessions)
+- Status: Accepted
 - Date: 2026-09-20
+- Updated: 2026-10-12
+- History: [replaced text](archive/0001-session-ownership-and-user-configuration-history.md)
 
 ## Context
 
@@ -16,6 +18,13 @@ Each Bivrost invocation owns a session directory, its child processes, local
 forwarding, and temporary kubeconfig. Session configuration is passed to the
 child shell and is removed when the session exits. The user's normal
 Kubernetes context and unrelated shell configuration remain unchanged.
+
+Sessions are independent of each other, so several may run side by side, each
+with its own ports, forwards and publication. A private registry of active
+sessions, under `XDG_RUNTIME_DIR` (falling back to the XDG state area when that
+is unset), records their non-credential metadata, and each owner holds an
+operating-system lock on its record for the session's lifetime
+([ADR 0018](0018-concurrent-sessions.md)).
 
 User preferences and environment overrides live in the user's configuration
 area under `bivrost`; `XDG_CONFIG_HOME` is honored when set. User-local files

@@ -1,7 +1,9 @@
 # ADR 0003: Catalogue packaging boundary
 
-- Status: Accepted; amended by [ADR 0017](0017-configuration-catalogue-and-nix-package.md) (default `catalogue.json` in user configuration)
+- Status: Accepted
 - Date: 2026-09-20
+- Updated: 2026-10-10
+- History: [replaced text](archive/0003-catalogue-packaging-boundary-history.md)
 
 ## Context
 
@@ -13,7 +15,10 @@ copying and update pressure and can invite credentials into source control.
 ## Decision
 
 The public package defines the catalogue shape and loading rules. A downstream
-deployment supplies a generic JSON map through `BIVROST_CATALOGUE_FILE`.
+deployment supplies a generic JSON map through `BIVROST_CATALOGUE_FILE` or, when
+that variable is unset or empty, as `catalogue.json` in the user's `bivrost`
+configuration directory; the variable takes precedence
+([ADR 0017](0017-configuration-catalogue-and-nix-package.md)).
 Users may provide a per-environment file under
 `XDG_CONFIG_HOME/bivrost/environments/`, and `--config PATH` selects an
 explicit profile. These sources are profiles, not permission grants.

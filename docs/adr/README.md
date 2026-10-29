@@ -4,6 +4,9 @@ These records describe Bivrost's public boundaries and planned directions.
 Future and proposed records are planning constraints, not claims that the
 described work already exists.
 
+Each accepted record states the current decision. Replaced text, and
+superseded or retired records, are kept in the [archive](archive/README.md).
+
 | ID | Decision | Status |
 | --- | --- | --- |
 | [0001](0001-session-ownership-and-user-configuration.md) | Session ownership and user configuration isolation | Accepted |

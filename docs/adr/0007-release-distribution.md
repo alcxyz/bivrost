@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-09-20
 - Updated: 2026-09-30, 2026-10-21
+- History: [replaced text](archive/0007-release-distribution-history.md)
 
 ## Context
 
@@ -25,15 +26,9 @@ named `dev`, missing version bumps and reused tags. Feature PRs and release
 promotions merge by fast-forward, matching the maintained public applications:
 the reviewed head is pushed to the base branch, which GitHub records as merging
 the PR, so `main` equals `dev` at each promotion and never holds a commit
-missing from `dev`. The 2026-09-30 update replaced squash promotions, whose
-required back-merge into `dev` caused repeated reconciliation work; the
-2026-10-21 update replaced squash feature merges and promotion merge commits,
-which GitHub writes as new commits, with fast-forward.
-No release-please bot is introduced.
-
-This supersedes the initial direct-to-main development flow. Existing tags and
-releases remain immutable. The migration restores the last released application
-behavior on `main`; unfinished routing work is reapplied to `dev` afterward.
+missing from `dev`. GitHub's squash, merge and rebase buttons are not used,
+because they write new commits. No release-please bot is introduced. Existing
+tags and releases remain immutable.
 
 Use pinned GitHub Actions and an exact GoReleaser version. `.go-version` records
 the build toolchain. Cross-compile with CGO disabled, trimmed paths and embedded
@@ -58,7 +53,7 @@ Existing Nix packaging continues consuming pinned source.
 
 ## Homebrew and AUR packages
 
-The 2026-10-21 update adds a Homebrew cask in `alcxyz/homebrew-tap` and the
+Releases also publish a Homebrew cask in `alcxyz/homebrew-tap` and the
 `bivrost-bin` AUR package, matching the other released Go applications.
 GoReleaser generates both from the same archives, but does not push them
 (`skip_upload`). Once the release is published, `scripts/release.py packages`
